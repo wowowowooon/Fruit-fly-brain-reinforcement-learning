@@ -11,6 +11,9 @@ __pycache__/
 # 시뮬 미리보기 이미지 - sim_check.py 돌리면 다시 나옴
 *.png
 
+# 학습 로그 - 돌릴 때마다 새로 쓰임
+train.log
+
 # neuPrint 토큰이 실수로 들어갈 만한 곳
 .env
 *token*

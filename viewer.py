@@ -12,7 +12,8 @@ from pathlib import Path
 import numpy as np
 import pygame
 
-from f1tenth_sim import LIDAR_RANGE, MAX_STEER, F1TenthEnv
+from controllers import follow_the_gap
+from f1tenth_sim import BODY_BACK, BODY_FRONT, CAR_WIDTH, F1TenthEnv
 from fly_driver import N_SECTORS, FlyDriver, sensor_channels
 
 WIDTH, HEIGHT = 1000, 720
@@ -29,14 +30,6 @@ BAR_POS = (90, 170, 240)
 BAR_NEG = (220, 90, 90)
 
 
-def follow_the_gap(env, scan):
-    """가장 멀리 뚫린 방향으로 도는 고전 방식."""
-    smoothed = np.convolve(scan, np.ones(9) / 9, mode="same")
-    best = int(np.argmax(smoothed))
-    steer = env.beam_angles[best] / MAX_STEER
-    return np.array([np.clip(steer, -1, 1), 1.0 - 0.7 * abs(steer)])
-
-
 def load_font(size, bold=False):
     """한글이 나오는 폰트를 고른다. consolas에는 한글 글자가 없어 네모로 찍힌다."""
     available = pygame.font.get_fonts()
@@ -50,11 +43,11 @@ def field_order(channels, n_sectors):
     """시야 구역을 화면 순서로 늘어놓는다.
 
     왼쪽 끝이 차의 좌측 후방(+135도), 가운데가 정면, 오른쪽 끝이 우측 후방.
-    좌우 구역 번호가 서로 반대 방향이라 L은 큰 번호부터, R도 큰 번호부터다.
+    양쪽 다 구역 0이 정면이므로 L은 큰 번호부터, R은 0번부터 늘어놓는다.
     """
-    index = {name: i for i, (name, _, _) in enumerate(channels)}
+    index = {channel[0]: i for i, channel in enumerate(channels)}
     order = [("L", s) for s in range(n_sectors - 1, -1, -1)]
-    order += [("R", s) for s in range(n_sectors - 1, -1, -1)]
+    order += [("R", s) for s in range(n_sectors)]
     return (
         [index[f"prox_{side}{s}"] for side, s in order],
         [index[f"loom_{side}{s}"] for side, s in order],
@@ -126,8 +119,8 @@ def main():
     big = load_font(19, bold=True)
     clock = pygame.time.Clock()
 
-    env = F1TenthEnv(n_beams=108)
-    driver = FlyDriver(n_beams=108)
+    env = F1TenthEnv()
+    driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range, dt=env.dt)
     trained = Path("fly_model.pt").exists()
     if trained:
         driver.load()
@@ -172,14 +165,14 @@ def main():
                     total = 0.0
 
         if not paused:
-            scan = obs[:-1] * LIDAR_RANGE
+            scan = obs[:-1] * env.lidar_range
             if mode == "fly":
                 # act() 안에서 이미 변환했다. 또 부르면 접근율이 0이 된다.
                 action = driver.act(obs)
                 features = driver.last_features
             else:
-                action = follow_the_gap(env, scan)
-                features = driver.encoder.encode(scan, obs[-1])
+                action = follow_the_gap(scan, env.beam_angles, env.lidar_range)
+                features = driver.encoder.encode(scan, obs[-1], env.dt)
             obs, reward, done, truncated, info = env.step(action)
             total += reward
             best = max(best, info["progress"])
@@ -193,18 +186,24 @@ def main():
         for wall in (env.inner, env.outer):
             draw_loop(screen, camera, wall)
 
-        scan = obs[:-1] * LIDAR_RANGE
+        scan = obs[:-1] * env.lidar_range
         angles = env.beam_angles + env.yaw
-        ends = env.pos + scan[:, None] * np.stack(
+        # 광선은 차 가운데가 아니라 앞쪽 라이다에서 나간다
+        lidar = env.lidar_pos
+        ends = lidar + scan[:, None] * np.stack(
             [np.cos(angles), np.sin(angles)], axis=1
         )
-        origin = tuple(camera(env.pos)[0])
-        for end in camera(ends)[::4]:
+        origin = tuple(camera(lidar)[0])
+        for end in camera(ends)[::16]:
             pygame.draw.line(screen, BEAM, origin, tuple(end), 1)
 
-        nose = env.pos + 0.9 * np.array([np.cos(env.yaw), np.sin(env.yaw)])
-        pygame.draw.circle(screen, CAR, origin, 6)
-        pygame.draw.line(screen, CAR, origin, tuple(camera(nose)[0]), 3)
+        # 차체를 길이 있는 물체로 그린다. 뒤가 길다.
+        heading = np.array([np.cos(env.yaw), np.sin(env.yaw)])
+        body = camera(np.stack([env.pos + BODY_BACK * heading,
+                                env.pos + BODY_FRONT * heading]))
+        thickness = max(3, int(CAR_WIDTH * camera.scale))
+        pygame.draw.line(screen, CAR, tuple(body[0]), tuple(body[1]), thickness)
+        pygame.draw.circle(screen, (240, 120, 90), origin, 4)
 
         state = "학습됨" if trained else "학습전"
         label = f"초파리 회로 ({state})" if mode == "fly" else "Follow the Gap"
