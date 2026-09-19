@@ -32,10 +32,20 @@ BRAKE_ACCEL = 4.0          # 감속 한계 [m/s^2]
 DRIVE_ACCEL = 7.0          # 가속 한계 [m/s^2]
 SPEED_MIN = 1.5            # 하한 [m/s]
 SAFETY = 0.65              # 실차 첫 주행 때는 0.6~0.7 로 낮춘다
+WIDTH_SPEED_GAIN = 3.5     # 옆 공간 1m 당 허용 속도 [m/s]. 낮출수록 안전
 
 # --- 라인 ---
 WALL_CLEARANCE = 0.20      # 스윕 폭에 더해 벽에서 띄울 거리 [m]
 HALF_WIDTH = CAR_WIDTH / 2
+
+
+def wall_clearance_for(half_width):
+    """트랙 폭에 맞춘 여유. 좁은 코스에서 고정값을 쓰면 라인이 안 나온다.
+
+    실제 대회 코스는 통로가 1.83m(반폭 0.92m)라 차체 스윕 0.19m 를 빼면
+    좌우로 쓸 수 있는 폭이 얼마 없다. 여유를 폭에 비례해 줄인다.
+    """
+    return float(np.clip(0.30 * half_width, 0.08, WALL_CLEARANCE))
 
 
 def outer_half_width(radius):
@@ -177,7 +187,8 @@ def _enforce_clearance(line, seg_a, seg_b, keep, passes=40):
     return line
 
 
-def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None):
+def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None,
+                           clearance=WALL_CLEARANCE):
     """곡률 제곱합이 최소가 되는 주행선.
 
     경로를 P = 기준선 + a*법선 으로 두면 굽은 정도가 a 의 1차식이라
@@ -194,7 +205,7 @@ def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None):
     line = _resample(_enforce_clearance(
         line, seg_a, seg_b,
         outer_half_width(1.0 / np.maximum(
-            np.abs(path_curvature(line, CURVE_SMOOTH)), 1e-6)) + WALL_CLEARANCE,
+            np.abs(path_curvature(line, CURVE_SMOOTH)), 1e-6)) + clearance,
         passes=90,
     ), count)
 
@@ -203,7 +214,7 @@ def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None):
         plus, minus = _lateral_room(line, normal, seg_a, seg_b)
         # 코너가 급할수록 차체가 더 바깥을 쓸므로 여유를 더 둔다
         swept = outer_half_width(1.0 / np.maximum(np.abs(path_curvature(line)), 1e-6))
-        keep = swept + WALL_CLEARANCE
+        keep = swept + clearance
         high = np.maximum(plus - keep, 0.0)
         low = -np.maximum(minus - keep, 0.0)
 
@@ -219,7 +230,7 @@ def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None):
         # 푼 결과가 벽을 스칠 수 있다. 실제 최단거리로 다시 재서 밀어낸다.
         need = outer_half_width(
             1.0 / np.maximum(np.abs(path_curvature(line)), 1e-6)
-        ) + WALL_CLEARANCE
+        ) + clearance
         line = _resample(_enforce_clearance(line, seg_a, seg_b, need), count)
 
     # 여유를 밀어내다 보면 라인에 뾰족한 꺾임이 남는다. 꺾임이 있으면
@@ -231,19 +242,33 @@ def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None):
                                         + np.roll(line, -1, axis=0))
         need = outer_half_width(
             1.0 / np.maximum(np.abs(path_curvature(line, CURVE_SMOOTH)), 1e-6)
-        ) + WALL_CLEARANCE * (1.0 - 0.35 * round_no / 7)
+        ) + clearance * (1.0 - 0.35 * round_no / 7)
         line = _enforce_clearance(line, seg_a, seg_b, need, passes=25)
     return _resample(line, count)
 
 
-def speed_profile(points, v_max=MAX_SPEED):
+def width_speed_cap(room, v_max=MAX_SPEED):
+    """옆으로 남은 공간에 맞춘 속도 상한.
+
+    좁은 통로에서는 조금만 벗어나도 벽이다. 추종 오차가 속도에 비례해
+    커지므로, 회복할 여유가 없으면 애초에 천천히 가야 한다.
+    실제 대회 코스처럼 통로가 1.8m 인 곳에서 7m/s 로 달리면 반드시 박는다.
+    """
+    usable = np.maximum(room - HALF_WIDTH, 0.05)
+    return np.clip(SPEED_MIN + WIDTH_SPEED_GAIN * usable, SPEED_MIN, v_max)
+
+
+def speed_profile(points, v_max=MAX_SPEED, room=None):
     """코너에서 미리 줄이고 탈출하며 올리는 속도 계획.
 
     1. 각 점에서 횡가속도 한계로 낼 수 있는 최고 속도
-    2. 앞뒤로 훑으며 가감속 한계를 지키게 다듬는다
+    2. 옆으로 남은 공간이 좁으면 더 줄인다
+    3. 앞뒤로 훑으며 가감속 한계를 지키게 다듬는다
     """
     kappa = np.abs(path_curvature(points, CURVE_SMOOTH))
     limit = np.sqrt(LAT_ACCEL * SAFETY / np.maximum(kappa, 1e-6))
+    if room is not None:
+        limit = np.minimum(limit, width_speed_cap(room, v_max))
     speed = np.clip(limit, SPEED_MIN, v_max)
 
     gap = np.linalg.norm(np.roll(points, -1, axis=0) - points, axis=1)
@@ -266,9 +291,19 @@ class StanleyRacer:
 
     name = "교사 (레이싱 라인 + Stanley)"
 
-    def __init__(self, center, seg_a, seg_b, v_max=MAX_SPEED):
-        self.line = minimum_curvature_line(center, seg_a, seg_b)
-        self.speed = speed_profile(self.line, v_max)
+    def __init__(self, center, seg_a, seg_b, v_max=MAX_SPEED, half_width=None):
+        if half_width is None:
+            normal = _normals(_resample(np.asarray(center, float), len(center)))
+            plus, minus = _lateral_room(
+                _resample(np.asarray(center, float), len(center)),
+                normal, seg_a, seg_b)
+            half_width = float(np.median(np.minimum(plus, minus)))
+        self.line = minimum_curvature_line(
+            center, seg_a, seg_b, clearance=wall_clearance_for(half_width))
+        normal = _normals(self.line)
+        plus, minus = _lateral_room(self.line, normal, seg_a, seg_b)
+        self.room = np.minimum(plus, minus)
+        self.speed = speed_profile(self.line, v_max, self.room)
         ahead = np.roll(self.line, -1, axis=0)
         self.heading = np.arctan2(ahead[:, 1] - self.line[:, 1],
                                   ahead[:, 0] - self.line[:, 0])

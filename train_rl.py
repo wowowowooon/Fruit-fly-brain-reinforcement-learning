@@ -1,6 +1,7 @@
 """강화학습(PPO)으로 랩타임을 줄인다.
 
-모방학습은 교사(Follow the Gap)를 흉내 내는 데서 끝난다. 교사보다 빨라질 수 없다.
+모방학습은 교사(레이싱 라인 + Stanley)를 흉내 내는 데서 끝난다.
+교사보다 빨라질 수 없고, 교사가 맵으로 아는 것(블라인드 코너)도 배울 수 없다.
 여기서부터는 정답 없이 점수만 보고 스스로 빨라진다.
 
   점수 = 트랙을 따라 나아간 거리(m).  충돌하면 크게 깎고 끝낸다.
@@ -187,7 +188,7 @@ def update(policy, optimizer, batch, epochs, entropy_coef):
         loss.backward()
         nn.utils.clip_grad_norm_(policy.parameters(), MAX_GRAD)
         optimizer.step()
-        losses.append(float(loss))
+        losses.append(float(loss.detach()))
 
     return float(np.mean(losses))
 

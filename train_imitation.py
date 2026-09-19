@@ -25,7 +25,7 @@ from raceline import StanleyRacer
 SEQ_LEN = 64          # RNN에 한 번에 넣는 시간 길이 (40Hz에서 1.6초)
 NOISE = 0.25          # 교사 행동에 섞는 흔들림
 EPISODE_STEPS = 2600  # 40Hz에서 65초. 트랙당 여러 바퀴를 돈다
-COLLECT_LAPS = 3      # 한 트랙에서 도는 바퀴 수. 레이싱 라인 계산이 비싸서
+COLLECT_LAPS = 2      # 한 트랙에서 도는 바퀴 수. 레이싱 라인 계산이 비싸서
                       # 같은 트랙을 더 활용하는 편이 싸게 먹힌다
 
 
@@ -120,7 +120,7 @@ def evaluate(driver, seeds, args, steps=1600):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tracks", type=int, default=150)
+    parser.add_argument("--tracks", type=int, default=130)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--lr", type=float, default=8e-4)
