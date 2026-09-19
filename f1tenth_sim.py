@@ -48,11 +48,16 @@ CONTROL_LATENCY = 0.05  # [s]
 
 # --- 트랙 다양성 ---
 # 실차는 처음 보는 코스에서 바로 달려야 한다. 한 가지 모양만 학습하면
-# 그 모양만 외운다. 크기, 폭, 코너 날카로움을 모두 흔든다.
-RADIUS_RANGE = (10.0, 22.0)    # 트랙 크기 [m]
-WIDTH_RANGE = (2.4, 4.2)       # 주행로 폭 [m]. 대회 코스는 보통 좁다
+# 그 모양만 외운다. 크기, 폭, 비율, 코너 날카로움을 모두 흔든다.
+#
+# 기준으로 삼은 실제 코스 (2026 대회 ifac_roboracer 맵):
+#   전체 22.2 x 8.1 m, 통로 폭 약 2.0 m (가장 넓은 곳 3.15 m)
+# 학습 범위는 이보다 좁은 쪽과 넓은 쪽을 모두 덮어야 한다.
+RADIUS_RANGE = (6.0, 20.0)     # 트랙 크기 [m]
+WIDTH_RANGE = (1.6, 4.0)       # 주행로 폭 [m]. 실제 코스는 2m 안팎으로 좁다
+ASPECT_RANGE = (1.0, 3.0)      # 가로:세로 비율. 실제 코스는 2.7:1 로 길쭉하다
 HARMONICS = (2, 3, 4, 5, 6)    # 높을수록 코너가 날카로워진다
-CURVE_MARGIN = 1.45            # 곡률 반경이 폭 절반의 이 배는 되어야 함
+CURVE_MARGIN = 1.35            # 곡률 반경이 폭 절반의 이 배는 되어야 함
 
 
 def _offset_walls(center, width):
@@ -147,6 +152,10 @@ def make_track(seed=0, points=400):
         shape = _circuit_loop if rng.random() < 0.5 else _smooth_loop
 
         center = shape(rng, radius, points)
+        # 길쭉하게 눌러서 실제 코스 같은 비율을 만든다
+        aspect = rng.uniform(*ASPECT_RANGE)
+        center = center / np.array([1.0, aspect])
+        center = _resample(center, points)
         if _min_curve_radius(center) < width / 2 * CURVE_MARGIN:
             continue                      # 벽이 접히는 급커브
         if _self_overlaps(center, width):
