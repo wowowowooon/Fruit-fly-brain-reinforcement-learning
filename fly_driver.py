@@ -17,6 +17,17 @@ N_SECTORS = 9          # 한쪽 시야를 몇 구역으로 나눌지
 PROX_QUANTILE = 0.1    # 구역 대표 거리. 최솟값 대신 하위 10%를 쓴다
 LOOM_SMOOTH = 0.6      # 접근율 저역통과 계수. 0이면 생값, 1에 가까울수록 둔해짐
 
+# 접근율의 물리적 한계.
+#   prox = 1/(1+d) 이므로 d(prox)/dt = -(접근속도)/(1+d)^2
+#   가장 심한 경우(d=0.3m, 7m/s 로 정면 접근)라도 4 를 넘지 않는다.
+# 이보다 큰 값은 벽이 실제로 다가온 게 아니라, 코너를 돌면서 구역의 시야가
+# 뚝 끊겨 거리가 건너뛴 것이다. 실제 스캔 맵에서 40배까지 튀는 것을 확인했다.
+LOOM_LIMIT = 4.0
+
+# 정규화 후 허용 범위. 학습 때 본 적 없는 크기의 입력은 잘라서 넣는다.
+# 처음 보는 코스에서 모델이 엉뚱한 값을 받고 무너지는 것을 막는다.
+FEATURE_LIMIT = 5.0
+
 
 def sensor_channels(n_sectors=N_SECTORS):
     """컨트롤러에 들어갈 입력 채널 목록. (이름, 종류, 반구, 구역)"""
@@ -71,7 +82,8 @@ class LidarEncoder:
     def normalize(self, values):
         if self.mean is None:
             return values
-        return ((values - self.mean) / self.std).astype(np.float32)
+        z = (values - self.mean) / self.std
+        return np.clip(z, -FEATURE_LIMIT, FEATURE_LIMIT).astype(np.float32)
 
     def reset(self):
         self.prev_prox = None
@@ -90,7 +102,8 @@ class LidarEncoder:
             self.prev_prox = prox
 
         # 차분은 노이즈를 1/dt배로 키운다. 그대로 쓰면 접근율이 잡음투성이가 된다.
-        raw_loom = (prox - self.prev_prox) / dt
+        # 물리적으로 불가능한 값은 시야가 끊긴 것이므로 먼저 잘라낸다.
+        raw_loom = np.clip((prox - self.prev_prox) / dt, -LOOM_LIMIT, LOOM_LIMIT)
         self.loom = self.loom_smooth * self.loom + (1 - self.loom_smooth) * raw_loom
         self.prev_prox = prox
 

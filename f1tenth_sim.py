@@ -155,6 +155,15 @@ def make_track(seed=0, points=400):
         # 길쭉하게 눌러서 실제 코스 같은 비율을 만든다
         aspect = rng.uniform(*ASPECT_RANGE)
         center = center / np.array([1.0, aspect])
+
+        # 좌우 뒤집기와 진행 방향 뒤집기.
+        # 이걸 안 하면 모든 트랙이 반시계라서 좌회전만 배운다.
+        # 실제 코스에서 급우회전이 필요한 순간에 좌회전을 내는 것을 확인했다.
+        if rng.random() < 0.5:
+            center = center * np.array([-1.0, 1.0])
+        if rng.random() < 0.5:
+            center = center[::-1]
+
         center = _resample(center, points)
         if _min_curve_radius(center) < width / 2 * CURVE_MARGIN:
             continue                      # 벽이 접히는 급커브
@@ -313,6 +322,11 @@ class F1TenthEnv(gym.Env):
             self.track_seed = seed
             self._load_track(seed)
 
+        # 출발 지점도 트랙마다 다르게 한다. 항상 같은 곳에서 시작하면
+        # 그 지점 이후의 코너 순서를 외울 수 있다.
+        begin = int(np.random.default_rng([self.track_seed, 7]).integers(
+            len(self.center)))
+        self.center = np.roll(self.center, -begin, axis=0)
         start = self.center[0]
         heading = self.center[1] - self.center[0]
 
