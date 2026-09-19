@@ -60,12 +60,30 @@ HARMONICS = (2, 3, 4, 5, 6)    # 높을수록 코너가 날카로워진다
 CURVE_MARGIN = 1.35            # 곡률 반경이 폭 절반의 이 배는 되어야 함
 
 
-def _offset_walls(center, width):
+# 실차는 매끄러운 수학 곡선이 아니라 스캔으로 만든 지저분한 벽을 본다.
+# 대회 맵은 2.5cm 격자에 저장되어 있어서 벽이 계단 모양이고, 스캔 자체의
+# 불규칙함도 섞여 있다. 매끈한 벽만 보고 배우면 실제 라이다 값에 놀란다.
+WALL_GRID = 0.025       # 맵 해상도. 벽이 이 간격으로 계단진다 [m]
+WALL_JITTER = 0.012     # 스캔의 불규칙함 [m]
+
+
+def _offset_walls(center, width, rng=None):
     """중심선 좌우로 폭의 절반만큼 떨어진 벽."""
     tangent = np.roll(center, -1, axis=0) - np.roll(center, 1, axis=0)
     tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
     normal = np.stack([-tangent[:, 1], tangent[:, 0]], axis=1)
-    return center - normal * width / 2, center + normal * width / 2
+    walls = [center - normal * width / 2, center + normal * width / 2]
+
+    if rng is not None:
+        rough = []
+        for wall in walls:
+            # 법선 방향으로만 흔든다. 트랙을 따라가는 방향은 건드리지 않는다.
+            offset = rng.normal(0.0, WALL_JITTER, (len(wall), 1))
+            noisy = wall + normal * offset
+            # 격자에 스냅해서 계단 모양을 만든다
+            rough.append(np.round(noisy / WALL_GRID) * WALL_GRID)
+        walls = rough
+    return walls[0], walls[1]
 
 
 def _min_curve_radius(center):
@@ -170,13 +188,13 @@ def make_track(seed=0, points=400):
         if _self_overlaps(center, width):
             continue                      # 트랙끼리 겹침
 
-        inner, outer = _offset_walls(center, width)
+        inner, outer = _offset_walls(center, width, rng)
         return center, inner, outer
 
     # 여기까지 오면 운이 나쁜 시드다. 흔들림 없는 원으로 돌려준다.
     theta = np.linspace(0, 2 * np.pi, points, endpoint=False)
     center = np.stack([radius * np.cos(theta), radius * np.sin(theta)], axis=1)
-    inner, outer = _offset_walls(center, width)
+    inner, outer = _offset_walls(center, width, rng)
     return center, inner, outer
 
 
