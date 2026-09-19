@@ -15,8 +15,19 @@ from f1tenth_sim import BODY_RADIUS
 from track_map import MapEnv, MapTrack
 
 
-def find_start(track, env):
-    """가장 넓은 곳에 차를 놓고, 코스가 뻗은 방향을 찾는다."""
+def _signed_area(path):
+    """폐곡선의 부호 있는 면적. 양수면 반시계."""
+    nxt = np.roll(path, -1, axis=0)
+    return 0.5 * float(np.sum(path[:, 0] * nxt[:, 1] - nxt[:, 0] * path[:, 1]))
+
+
+def find_start(track, env, counterclockwise=True):
+    """가장 넓은 곳에 차를 놓고, 코스가 뻗은 방향을 찾는다.
+
+    코스는 양쪽으로 다 뚫려 있어서 앞만 보고 고르면 방향이 반반이다.
+    한 바퀴 돌아 보고 도는 방향이 원하는 쪽인지 확인한 뒤 필요하면 뒤집는다.
+    대회 주행 방향을 맞춰야 학습한 모델을 그대로 올릴 수 있다.
+    """
     position, _ = track.widest_point()
     best = None
     for yaw in np.linspace(-np.pi, np.pi, 72, endpoint=False):
@@ -25,7 +36,16 @@ def find_start(track, env):
         ahead = scan[np.abs(env.beam_angles) <= np.deg2rad(10)].min()
         if best is None or ahead > best[0]:
             best = (ahead, yaw)
-    return position, float(best[1])
+    heading = float(best[1])
+
+    # 그 방향으로 한 바퀴 돌려 보고, 도는 쪽이 반대면 뒤집는다
+    env.start_pose = (position, heading)
+    path, closed = trace_lap(env)
+    if closed and len(path) > 20:
+        turning = _signed_area(path) > 0          # 양수 = 반시계
+        if turning != counterclockwise:
+            heading = float((heading + np.pi + np.pi) % (2 * np.pi) - np.pi)
+    return position, heading
 
 
 def trace_lap(env, max_steps=8000):

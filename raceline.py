@@ -1,8 +1,9 @@
 """레이싱 라인을 뽑고 Stanley 로 따라간다.
 
-팀 저장소 Roboracer-AJOU/jetson_code 의 실차 방식을 그대로 옮긴 것이다.
+팀 저장소 Roboracer-AJOU/jetson_code 의 실차 방식을 옮긴 것이다.
   라인   scripts/generate_raceline_from_centerline.py  최소곡률 최적화
-  추종   path_following/stanley_waypoint_follow_node.py  Stanley
+  속도   scripts/speed_profile.py
+  추종   path_following/stanley_waypoint_follow_node.py
 
 FGM 과 다른 점이 핵심이다. FGM 은 그때그때 뚫린 쪽으로 가므로 트랙 한가운데를
 달린다. 레이싱 라인은 코너를 미리 깎아 들어가므로 훨씬 빠르고, 급조향도 실제로 쓴다.
@@ -13,24 +14,40 @@ FGM 과 다른 점이 핵심이다. FGM 은 그때그때 뚫린 쪽으로 가므
 
 import numpy as np
 
-from f1tenth_sim import MAX_STEER, MAX_SPEED, WHEELBASE
+from f1tenth_sim import (
+    CAR_WIDTH, FRONT_OVERHANG, MAX_SPEED, MAX_STEER, WHEELBASE, _resample,
+)
 
-# --- Stanley (실차 파라미터) ---
+# --- Stanley (팀 실차 파라미터) ---
 STANLEY_K = 1.8            # 경로 이탈 복귀 세기
 STANLEY_SOFTENING = 0.12   # 저속에서 발산하지 않게 분모에 더하는 값
 HEADING_GAIN = 1.0         # 방향 오차 비중
 HEADING_BLEND_M = 0.45     # 이탈이 이보다 크면 방향항을 줄인다
+FEEDFORWARD_LEAD = 0.12    # 몇 초 앞의 곡률을 미리 반영할지 [s]
+CURVE_SMOOTH = 11          # 곡률을 이 개수만큼 평균 내어 잔떨림을 없앤다
 
-# --- 속도 프로파일 ---
-LAT_ACCEL = 6.0            # 코너에서 버틸 수 있는 횡가속도 [m/s^2]
-LONG_ACCEL = 4.5           # 가감속 한계 [m/s^2]
-SPEED_MIN = 1.6            # 아무리 급해도 이 속도는 낸다 [m/s]
+# --- 속도 프로파일 (팀 speed_profile.py) ---
+LAT_ACCEL = 6.0            # 코너에서 버티는 횡가속도 [m/s^2]
+BRAKE_ACCEL = 4.0          # 감속 한계 [m/s^2]
+DRIVE_ACCEL = 7.0          # 가속 한계 [m/s^2]
+SPEED_MIN = 1.5            # 하한 [m/s]
+SAFETY = 0.65              # 실차 첫 주행 때는 0.6~0.7 로 낮춘다
 
 # --- 라인 ---
-# 차는 점이 아니다. 앞이 0.50m 나 되어서 코너에서 앞 외측 모서리가 경로보다
-# 더 바깥을 지난다. 팀 코드 vehicle_geometry.outer_half_width 기준으로
-# 반경 1m 코너에서 0.25m 까지 벌어진다. 그만큼 벽에서 띄워야 한다.
-LINE_CLEARANCE = 0.30      # 벽에서 띄울 거리 [m]
+WALL_CLEARANCE = 0.20      # 스윕 폭에 더해 벽에서 띄울 거리 [m]
+HALF_WIDTH = CAR_WIDTH / 2
+
+
+def outer_half_width(radius):
+    """반경 R 의 원호를 돌 때 차체가 경로 바깥으로 벗어나는 거리.
+
+    차 앞이 0.50m 나 되어서 코너에서 앞 외측 모서리가 경로보다 바깥을 지난다.
+    팀 vehicle_geometry.outer_half_width 와 같은 식이다.
+        R=0.9 -> 0.263   R=1.5 -> 0.224   R=3.0 -> 0.186   직선 -> 0.15
+    """
+    r = np.abs(radius)
+    wide = np.hypot(FRONT_OVERHANG, r + HALF_WIDTH) - r
+    return np.where(r > 1e4, HALF_WIDTH, wide)
 
 
 def _normals(points):
@@ -39,8 +56,26 @@ def _normals(points):
     return np.stack([-tangent[:, 1], tangent[:, 0]], axis=1)
 
 
+def path_curvature(points, smooth=0):
+    """각 점에서의 곡률 [1/m]. 부호는 좌회전이 양수.
+
+    벽 여유를 강제하면서 라인에 잔 꺾임이 생긴다. 그대로 쓰면 곡률이
+    들쭉날쭉해서 속도 계획과 피드포워드가 요동친다. smooth 를 주면
+    그만큼의 이웃과 평균 내어 실제 코너 모양만 남긴다.
+    """
+    d1 = (np.roll(points, -1, axis=0) - np.roll(points, 1, axis=0)) / 2
+    d2 = np.roll(points, -1, axis=0) - 2 * points + np.roll(points, 1, axis=0)
+    cross = d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0]
+    kappa = cross / np.maximum(np.linalg.norm(d1, axis=1) ** 3, 1e-9)
+    if smooth > 1:
+        window = np.ones(smooth) / smooth
+        pad = np.concatenate([kappa[-smooth:], kappa, kappa[:smooth]])
+        kappa = np.convolve(pad, window, mode="same")[smooth:-smooth]
+    return kappa
+
+
 def _second_difference(n):
-    """폐곡선용 2계 차분 행렬. 곡률에 해당한다."""
+    """폐곡선용 2계 차분 행렬. 굽은 정도에 해당한다."""
     matrix = np.zeros((n, n))
     index = np.arange(n)
     matrix[index, index] = -2.0
@@ -49,53 +84,156 @@ def _second_difference(n):
     return matrix
 
 
-def minimum_curvature_line(center, half_width, rounds=12):
-    """중심선에서 좌우로 얼마나 비킬지 정해 곡률 총합을 최소화한다.
-
-    경로를 P = 중심선 + a*법선 으로 두면 곡률 제곱합이 a 에 대한 이차식이 된다.
-    벽 안쪽이라는 제약만 걸고 푼다.
-
-    경사하강은 이 문제에서 거의 안 움직인다(4계 차분이라 조건수가 나쁘다).
-    직접 풀고, 벽을 넘은 점은 고정한 뒤 나머지를 다시 푸는 식으로 반복한다.
-    """
-    count = len(center)
-    normal = _normals(center)
-    d2 = _second_difference(count)
-    base = d2 @ center                        # 중심선 자체의 굽음
-    mx = d2 * normal[:, 0]                    # a 가 x 성분에 주는 영향
-    my = d2 * normal[:, 1]
-
-    gram = mx.T @ mx + my.T @ my
-    bias = mx.T @ base[:, 0] + my.T @ base[:, 1]
-    gram += np.eye(count) * (1e-6 * np.trace(gram) / count + 1e-9)
-    limit = float(np.maximum(half_width - LINE_CLEARANCE, 0.02))
-
-    alpha = np.zeros(count)
-    fixed = np.zeros(count, dtype=bool)
+def _largest_eigenvalue(matrix, rounds=30):
+    vector = np.ones(len(matrix)) / np.sqrt(len(matrix))
+    value = 1.0
     for _ in range(rounds):
-        free = ~fixed
-        if not free.any():
-            break
-        rhs = -bias[free] - gram[np.ix_(free, fixed)] @ alpha[fixed]
-        try:
-            alpha[free] = np.linalg.solve(gram[np.ix_(free, free)], rhs)
-        except np.linalg.LinAlgError:
-            break
-        over = np.abs(alpha) > limit
-        if not over.any():
-            break
-        alpha = np.clip(alpha, -limit, limit)
-        fixed |= over
-    return center + np.clip(alpha, -limit, limit)[:, None] * normal
+        vector = matrix @ vector
+        value = np.linalg.norm(vector)
+        if value < 1e-12:
+            return 1.0
+        vector /= value
+    return value
 
 
-def path_curvature(points):
-    """각 점에서의 곡률 [1/m]."""
-    d1 = (np.roll(points, -1, axis=0) - np.roll(points, 1, axis=0)) / 2
-    d2 = np.roll(points, -1, axis=0) - 2 * points + np.roll(points, 1, axis=0)
-    cross = d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0]
-    speed = np.linalg.norm(d1, axis=1)
-    return cross / np.maximum(speed ** 3, 1e-9)
+def _solve_box(gram, bias, low, high, iterations=600):
+    """0.5 aGa + b·a 를 low<=a<=high 안에서 최소화. 가속 투영경사법."""
+    step = 1.0 / (_largest_eigenvalue(gram) + 1e-9)
+    alpha = np.zeros(len(bias))
+    look = alpha.copy()
+    momentum = 1.0
+    for _ in range(iterations):
+        moved = np.clip(look - step * (gram @ look + bias), low, high)
+        nxt = (1.0 + np.sqrt(1.0 + 4.0 * momentum * momentum)) / 2.0
+        look = moved + ((momentum - 1.0) / nxt) * (moved - alpha)
+        alpha, momentum = moved, nxt
+    return alpha
+
+
+def _rays_to_walls(origins, directions, seg_a, seg_b, reach):
+    """점마다 각자의 방향으로 쏜 광선이 벽에 닿는 거리. (N,)
+
+    점 하나씩 raycast 를 부르면 파이썬 루프가 400번 돌아 느리다.
+    전부 한 번에 (점 x 선분) 행렬로 계산한다.
+    """
+    edge = seg_b - seg_a                                        # (M,2)
+    denom = (directions[:, None, 0] * edge[None, :, 1]
+             - directions[:, None, 1] * edge[None, :, 0])       # (N,M)
+    offset = seg_a[None, :, :] - origins[:, None, :]            # (N,M,2)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = (offset[..., 0] * edge[None, :, 1]
+             - offset[..., 1] * edge[None, :, 0]) / denom
+        s = (offset[..., 0] * directions[:, None, 1]
+             - offset[..., 1] * directions[:, None, 0]) / denom
+    hit = (t > 1e-9) & (s >= 0) & (s <= 1) & (np.abs(denom) > 1e-12)
+    return np.minimum(np.where(hit, t, np.inf).min(axis=1), reach)
+
+
+def _lateral_room(line, normal, seg_a, seg_b, reach=6.0):
+    """각 점에서 좌우 법선 방향으로 벽까지 몇 m 인지."""
+    plus = _rays_to_walls(line, normal, seg_a, seg_b, reach)
+    minus = _rays_to_walls(line, -normal, seg_a, seg_b, reach)
+    return plus, minus
+
+
+def _closest_on_walls(points, seg_a, seg_b):
+    """각 점에서 가장 가까운 벽 위의 점과 그 거리."""
+    edge = seg_b - seg_a
+    length2 = np.maximum((edge ** 2).sum(axis=1), 1e-12)
+    offset = points[:, None, :] - seg_a[None, :, :]
+    t = np.clip((offset[..., 0] * edge[None, :, 0]
+                 + offset[..., 1] * edge[None, :, 1]) / length2, 0.0, 1.0)
+    foot = seg_a[None, :, :] + t[..., None] * edge[None, :, :]
+    gap = np.linalg.norm(points[:, None, :] - foot, axis=2)
+    nearest = np.argmin(gap, axis=1)
+    rows = np.arange(len(points))
+    return foot[rows, nearest], gap[rows, nearest]
+
+
+def _enforce_clearance(line, seg_a, seg_b, keep, passes=40):
+    """벽에 너무 붙은 점을 밀어낸다.
+
+    최소곡률만 풀면 라인이 벽을 스칠 수 있다. 법선 방향으로만 여유를 쟀기
+    때문에, 비스듬히 다가오는 벽이나 앞뒤로 놓인 장애물은 놓친다.
+    실제 최단거리로 다시 재서 부족한 만큼 밀어낸다.
+
+    평활을 매번 걸면 밀어낸 걸 도로 당겨서 수렴하지 않는다.
+    앞부분에서만 다듬고 뒤쪽 패스는 밀어내기만 한다.
+    """
+    line = line.copy()
+    for step in range(passes):
+        foot, gap = _closest_on_walls(line, seg_a, seg_b)
+        short = gap < keep
+        if not short.any():
+            break
+        away = line[short] - foot[short]
+        norm = np.linalg.norm(away, axis=1, keepdims=True)
+        away = np.where(norm > 1e-9, away / np.maximum(norm, 1e-9), 0.0)
+        line[short] = foot[short] + away * keep[short, None] * 1.05
+        # 다듬기는 밀어낸 걸 도로 당긴다. 약하게, 그리고 앞쪽 패스에서만.
+        if step < passes * 0.6:
+            line = 0.84 * line + 0.08 * (np.roll(line, 1, axis=0)
+                                         + np.roll(line, -1, axis=0))
+    return line
+
+
+def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None):
+    """곡률 제곱합이 최소가 되는 주행선.
+
+    경로를 P = 기준선 + a*법선 으로 두면 굽은 정도가 a 의 1차식이라
+    이차계획 문제가 된다. 한 번 풀고 끝내면 거의 안 움직인다. 푼 결과를
+    새 기준선으로 삼아 법선과 벽 여유를 다시 재고 또 푸는 식으로 반복한다.
+    """
+    count = points or len(center)
+    line = _resample(np.asarray(center, dtype=float), count)
+    d2 = _second_difference(count)
+
+    # 먼저 기준선부터 통과 가능하게 만든다.
+    # 중심선 위에 장애물이 놓이면 좌우 여유가 0 으로 잡혀 최적화가 그 점을
+    # 움직이지 못한다. 그러면 라인이 장애물을 뚫고 지나간다.
+    line = _resample(_enforce_clearance(
+        line, seg_a, seg_b,
+        outer_half_width(1.0 / np.maximum(
+            np.abs(path_curvature(line, CURVE_SMOOTH)), 1e-6)) + WALL_CLEARANCE,
+        passes=90,
+    ), count)
+
+    for _ in range(rounds):
+        normal = _normals(line)
+        plus, minus = _lateral_room(line, normal, seg_a, seg_b)
+        # 코너가 급할수록 차체가 더 바깥을 쓸므로 여유를 더 둔다
+        swept = outer_half_width(1.0 / np.maximum(np.abs(path_curvature(line)), 1e-6))
+        keep = swept + WALL_CLEARANCE
+        high = np.maximum(plus - keep, 0.0)
+        low = -np.maximum(minus - keep, 0.0)
+
+        base = d2 @ line
+        mx = d2 * normal[:, 0]
+        my = d2 * normal[:, 1]
+        gram = mx.T @ mx + my.T @ my
+        bias = mx.T @ base[:, 0] + my.T @ base[:, 1]
+
+        alpha = _solve_box(gram, bias, low, high)
+        line = _resample(line + alpha[:, None] * normal, count)
+
+        # 푼 결과가 벽을 스칠 수 있다. 실제 최단거리로 다시 재서 밀어낸다.
+        need = outer_half_width(
+            1.0 / np.maximum(np.abs(path_curvature(line)), 1e-6)
+        ) + WALL_CLEARANCE
+        line = _resample(_enforce_clearance(line, seg_a, seg_b, need), count)
+
+    # 여유를 밀어내다 보면 라인에 뾰족한 꺾임이 남는다. 꺾임이 있으면
+    # 곡률이 튀어서 속도 계획과 피드포워드가 망가진다. 펴고 다시 확인하기를
+    # 번갈아 하면서, 펼수록 여유는 조금씩만 양보한다.
+    for round_no in range(8):
+        for _ in range(2):
+            line = 0.5 * line + 0.25 * (np.roll(line, 1, axis=0)
+                                        + np.roll(line, -1, axis=0))
+        need = outer_half_width(
+            1.0 / np.maximum(np.abs(path_curvature(line, CURVE_SMOOTH)), 1e-6)
+        ) + WALL_CLEARANCE * (1.0 - 0.35 * round_no / 7)
+        line = _enforce_clearance(line, seg_a, seg_b, need, passes=25)
+    return _resample(line, count)
 
 
 def speed_profile(points, v_max=MAX_SPEED):
@@ -104,23 +242,23 @@ def speed_profile(points, v_max=MAX_SPEED):
     1. 각 점에서 횡가속도 한계로 낼 수 있는 최고 속도
     2. 앞뒤로 훑으며 가감속 한계를 지키게 다듬는다
     """
-    kappa = np.abs(path_curvature(points))
-    limit = np.sqrt(LAT_ACCEL / np.maximum(kappa, 1e-6))
+    kappa = np.abs(path_curvature(points, CURVE_SMOOTH))
+    limit = np.sqrt(LAT_ACCEL * SAFETY / np.maximum(kappa, 1e-6))
     speed = np.clip(limit, SPEED_MIN, v_max)
 
     gap = np.linalg.norm(np.roll(points, -1, axis=0) - points, axis=1)
     count = len(points)
-    for _ in range(2):                        # 폐곡선이라 두 바퀴 돌려야 수렴
+    for _ in range(3):                        # 폐곡선이라 여러 바퀴 돌려야 수렴
         for i in range(count):                # 감속: 앞의 코너에 맞춰 미리 줄인다
             j = (count - 1 - i) % count
             nxt = (j + 1) % count
             speed[j] = min(speed[j], np.sqrt(
-                speed[nxt] ** 2 + 2 * LONG_ACCEL * gap[j]))
+                speed[nxt] ** 2 + 2 * BRAKE_ACCEL * gap[j]))
         for i in range(count):                # 가속: 낼 수 있는 만큼만 올린다
             nxt = (i + 1) % count
             speed[nxt] = min(speed[nxt], np.sqrt(
-                speed[i] ** 2 + 2 * LONG_ACCEL * gap[i]))
-    return speed
+                speed[i] ** 2 + 2 * DRIVE_ACCEL * gap[i]))
+    return np.clip(speed, SPEED_MIN, v_max)
 
 
 class StanleyRacer:
@@ -128,13 +266,38 @@ class StanleyRacer:
 
     name = "교사 (레이싱 라인 + Stanley)"
 
-    def __init__(self, center, half_width, v_max=MAX_SPEED):
-        self.line = minimum_curvature_line(center, half_width)
+    def __init__(self, center, seg_a, seg_b, v_max=MAX_SPEED):
+        self.line = minimum_curvature_line(center, seg_a, seg_b)
         self.speed = speed_profile(self.line, v_max)
-        self.heading = np.arctan2(
-            np.roll(self.line, -1, axis=0)[:, 1] - self.line[:, 1],
-            np.roll(self.line, -1, axis=0)[:, 0] - self.line[:, 0],
-        )
+        ahead = np.roll(self.line, -1, axis=0)
+        self.heading = np.arctan2(ahead[:, 1] - self.line[:, 1],
+                                  ahead[:, 0] - self.line[:, 0])
+        # 코너를 돌려면 원래 이만큼은 꺾어야 한다. 오차를 보고 나서 꺾으면 늦는다.
+        self.feedforward = np.arctan(
+            WHEELBASE * path_curvature(self.line, CURVE_SMOOTH))
+        self.spacing = float(np.linalg.norm(
+            np.roll(self.line, -1, axis=0) - self.line, axis=1).mean())
+
+    @classmethod
+    def for_env(cls, env, v_max=MAX_SPEED, place=True):
+        racer = cls(env.center, env.seg_a, env.seg_b, v_max)
+        if place:
+            racer.place(env)
+        return racer
+
+    def place(self, env):
+        """차를 레이싱 라인 위에 올려 놓는다.
+
+        환경은 중심선 시작점에 차를 놓는데, 레이싱 라인은 거기서 최대 0.7m
+        떨어져 있다. 그대로 출발하면 첫 스텝부터 최대 조향으로 복귀하려다
+        벽에 박는다. 실차에서도 출발 위치는 라인 위다.
+        """
+        near = int(np.argmin(np.linalg.norm(self.line - env.pos, axis=1)))
+        env.pos = self.line[near].copy()
+        env.yaw = float(self.heading[near])
+        env.speed = min(env.speed, float(self.speed[near]))
+        env.prev_index = env._progress()
+        return near
 
     def reset(self):
         pass
@@ -150,7 +313,7 @@ class StanleyRacer:
 
         # 경로 오른쪽에 있으면 cte > 0 -> 좌회전으로 복귀
         offset = front - self.line[near]
-        cte = (offset[0] * np.sin(path_yaw) - offset[1] * np.cos(path_yaw))
+        cte = offset[0] * np.sin(path_yaw) - offset[1] * np.cos(path_yaw)
 
         cte_term = np.arctan2(STANLEY_K * cte, abs(speed) + STANLEY_SOFTENING)
         raw_heading = HEADING_GAIN * heading_error
@@ -158,10 +321,14 @@ class StanleyRacer:
             weight = 1.0                      # 둘 다 안쪽으로 민다. 억제할 이유 없음
         else:
             weight = max(0.0, 1.0 - abs(cte) / HEADING_BLEND_M)
-        steer = cte_term + weight * raw_heading
 
-        target = self.speed[near]
+        # 곡률 피드포워드. 지금 있는 자리가 아니라 곧 도착할 자리의 코너를 본다.
+        # 제어 지연과 서보 응답 때문에 미리 꺾어 두지 않으면 코너 밖으로 밀린다.
+        lead = int(max(1.0, speed * FEEDFORWARD_LEAD) / max(self.spacing, 1e-6))
+        soon = (near + lead) % len(self.line)
+        steer = self.feedforward[soon] + cte_term + weight * raw_heading
+
         return np.array([
             float(np.clip(steer / MAX_STEER, -1.0, 1.0)),
-            float(np.clip(2.0 * target / MAX_SPEED - 1.0, -1.0, 1.0)),
+            float(np.clip(2.0 * self.speed[near] / MAX_SPEED - 1.0, -1.0, 1.0)),
         ])

@@ -1,10 +1,14 @@
-"""Follow the Gap을 교사로 삼아 초파리 회로에 운전을 가르친다.
+"""레이싱 라인을 교사로 삼아 초파리 회로에 운전을 가르친다.
+
+교사는 팀 실차 방식(최소곡률 레이싱 라인 + Stanley)이다. 자기 위치와 트랙
+모양을 아는 상태에서 가장 빠른 선을 그린다. 학생인 초파리 회로는 라이다만
+보고 그 결과를 흉내 낸다. 아는 게 많은 교사를 모르는 학생이 따라 하는 방식이다.
+
+FGM(그때그때 뚫린 쪽으로 가기)을 교사로 쓰면 트랙 한가운데로만 달려서
+급조향을 배울 일이 없다. 실제 코스는 최대 조향이 필요한 구간이 6%나 된다.
 
 배선은 초파리 것 그대로 두고, 신호 세기만 조정한다.
 교사 주행 중 일부러 흔들어서, 교사가 잘 안 가는 상황도 겪게 한다.
-
-센서와 차량 값은 f1tenth_sim의 대회 규정 사양을 그대로 쓴다.
-특히 라이다 사거리가 바뀌면 입력 분포가 달라지므로 다시 학습해야 한다.
 """
 
 import argparse
@@ -13,10 +17,10 @@ import numpy as np
 import torch
 from torch import nn
 
-from controllers import follow_the_gap
 from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
 from fly_driver import FlyDriver, LidarEncoder
 from progress import Logger, Progress
+from raceline import StanleyRacer
 
 SEQ_LEN = 64          # RNN에 한 번에 넣는 시간 길이 (40Hz에서 1.6초)
 NOISE = 0.25          # 교사 행동에 섞는 흔들림
@@ -29,35 +33,45 @@ def make_env(args):
 
 
 def collect(args, rng, log=print):
-    """교사 주행을 기록한다. 기록하는 정답은 흔들리기 전 값."""
+    """교사 주행을 기록한다. 기록하는 정답은 흔들리기 전 값.
+
+    교사가 충돌한 에피소드는 버린다. 잘못된 시범을 배우면 독이 된다.
+    """
     env = make_env(args)
     encoder = LidarEncoder(args.beams, lidar_range=args.lidar_range)
     episodes = []
     bar = Progress(args.tracks, "수집", log)
+    dropped = 0
 
     for track in range(args.tracks):
         obs, _ = env.reset(seed=track)
         encoder.reset()
+        # 교사는 차를 레이싱 라인 위로 옮긴다. 옮긴 뒤의 관측을 다시 읽어야 한다.
+        racer = StanleyRacer.for_env(env)
+        obs = env._observe(env._scan())
         features, labels = [], []
+        info = {"crashed": False}
 
         for _ in range(EPISODE_STEPS):
             scan = obs[:-1] * env.lidar_range
-            action = follow_the_gap(scan, env.beam_angles, env.lidar_range)
+            action = racer.act(env.pos, env.yaw, env.speed)
             features.append(encoder.raw(scan, obs[-1], env.dt))
             labels.append(action.copy())
 
             noisy = np.clip(action + rng.normal(0, NOISE, 2), -1, 1)
-            obs, _, done, truncated, _ = env.step(noisy)
+            obs, _, done, truncated, info = env.step(noisy)
             if done or truncated:
                 break
 
-        if len(features) >= SEQ_LEN:
+        if info["crashed"] or len(features) < SEQ_LEN:
+            dropped += 1
+        else:
             episodes.append((
                 np.array(features, dtype=np.float32),
                 np.array(labels, dtype=np.float32),
             ))
         steps = sum(len(f) for f, _ in episodes)
-        bar.step(track + 1, f"{steps:>6}스텝")
+        bar.step(track + 1, f"{steps:>6}스텝  버림 {dropped}")
 
     return episodes
 
@@ -100,11 +114,11 @@ def evaluate(driver, seeds, args, steps=1600):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tracks", type=int, default=30)
+    parser.add_argument("--tracks", type=int, default=60)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--lr", type=float, default=8e-4)
-    parser.add_argument("--beams", type=int, default=LIDAR_BEAMS)
+    parser.add_argument("--beams", type=int, default=541)
     parser.add_argument("--lidar-range", type=float, default=LIDAR_RANGE)
     parser.add_argument("--eval-every", type=int, default=3)
     parser.add_argument("--out", type=str, default="fly_model.pt")
