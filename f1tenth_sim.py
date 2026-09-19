@@ -15,18 +15,21 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-# --- 차량 (Traxxas 1:10, F1TENTH 표준 섀시) ---
-WHEELBASE = 0.33        # 뒷축에서 앞축까지 [m]
-CAR_WIDTH = 0.31        # 바퀴 바깥까지의 폭 [m]
-CAR_LENGTH = 0.58       # 뒤 범퍼에서 앞 범퍼까지 [m]
-REAR_OVERHANG = 0.10    # 뒷축 뒤로 튀어나온 길이 [m]
-MAX_STEER = 0.42        # 최대 조향각 [rad]
+# --- 차량 (Traxxas 1:10) ---
+# 팀 저장소 Roboracer-AJOU/jetson_code 의 vehicle_geometry.py 실측값(2026-08-16).
+# 추정값이 아니라 실제로 잰 치수다. 실차를 다시 재면 여기도 같이 고쳐야 한다.
+WHEELBASE = 0.33        # 뒷축(base_link)에서 앞축까지 [m]
+CAR_WIDTH = 0.30        # 전폭 [m] (반폭 0.15)
+REAR_OVERHANG = 0.10    # base_link 뒤로 튀어나온 길이 [m]
+FRONT_OVERHANG = 0.50   # base_link 앞으로 튀어나온 길이 [m]
+CAR_LENGTH = FRONT_OVERHANG + REAR_OVERHANG    # 0.60 m
+MAX_STEER = 0.3735      # 최대 조향각 [rad] (21.4도). local_planner_node 실제값
 MAX_SPEED = 7.0         # 목표 최고 속도 [m/s]. 보수적으로 잡았다
 MAX_ACCEL = 4.0         # 속도 변화율 한계 [m/s^2]
 
 # 차체가 뒷축 기준으로 차지하는 앞뒤 범위. 충돌 판정에 쓴다.
 BODY_BACK = -REAR_OVERHANG
-BODY_FRONT = CAR_LENGTH - REAR_OVERHANG
+BODY_FRONT = FRONT_OVERHANG
 BODY_RADIUS = CAR_WIDTH / 2
 
 # --- 라이다 (Hokuyo UST-10LX, 대회 규정 필수 센서) ---
@@ -35,9 +38,9 @@ LIDAR_RANGE = 10.0      # 최대 측정 거리 [m]. 이 값이 바뀌면 재학�
 LIDAR_BEAMS = 1081      # 270도 / 0.25도 + 1
 LIDAR_HZ = 40.0         # 25ms 주기
 CONTROL_DT = 1.0 / LIDAR_HZ
-LIDAR_AHEAD = 0.38      # 뒷축에서 라이다까지 [m]. 차량 앞쪽에 장착
+LIDAR_AHEAD = 0.31      # base_link 에서 라이다까지 [m]. 팀 실측값
 # 라이다에서 본 차체. 앞으로는 조금, 뒤로는 많이 튀어나와 있다.
-#   앞 범퍼 +0.10m / 뒤 범퍼 -0.48m / 좌우 각 0.155m
+#   앞 범퍼 +0.19m / 뒤 범퍼 -0.41m / 좌우 각 0.15m
 # 코너에서 뒤가 바깥으로 쓸리는데 라이다는 그쪽을 잘 못 본다.
 
 # --- 제어 지연 ---
@@ -146,17 +149,63 @@ def _smooth_loop(rng, radius, points):
     return np.stack([r * np.cos(theta), r * np.sin(theta)], axis=1)
 
 
-def _circuit_loop(rng, radius, points):
-    """직선과 코너로 이루어진 서킷형. 실제 대회 코스가 이 모양이다."""
-    corners = int(rng.integers(6, 12))
-    angles = np.sort(rng.uniform(0, 2 * np.pi, corners))
-    # 꼭짓점이 너무 몰리면 급코너가 되므로 최소 간격을 준다
+def _rounded_polygon(vertices, corner_radius, points):
+    """다각형 꼭짓점을 정해진 반경의 원호로 깎는다.
+
+    Chaikin 과 달리 코너 반경을 직접 지정할 수 있다. 반경을 작게 주면
+    진짜 헤어핀이 나온다. 변 중간은 직선으로 남는다.
+    """
+    path = []
+    count = len(vertices)
+    for i in range(count):
+        here = vertices[i]
+        to_prev = vertices[i - 1] - here
+        to_next = vertices[(i + 1) % count] - here
+        len_prev = np.linalg.norm(to_prev)
+        len_next = np.linalg.norm(to_next)
+        if len_prev < 1e-6 or len_next < 1e-6:
+            continue
+        to_prev = to_prev / len_prev
+        to_next = to_next / len_next
+
+        inner = np.arccos(np.clip(np.dot(to_prev, to_next), -1.0, 1.0))
+        if inner < 0.08 or inner > np.pi - 0.08:
+            path.append(here)             # 거의 일직선이거나 접힌 꼭짓점
+            continue
+
+        half = inner / 2
+        # 변 길이를 넘지 않는 선에서 원하는 반경을 쓴다
+        reach = min(corner_radius / np.tan(half), len_prev * 0.45, len_next * 0.45)
+        actual = reach * np.tan(half)
+        start = here + to_prev * reach
+        end = here + to_next * reach
+        bisect = to_prev + to_next
+        bisect = bisect / np.linalg.norm(bisect)
+        center = here + bisect * (actual / np.sin(half))
+
+        a0 = np.arctan2(*(start - center)[::-1])
+        a1 = np.arctan2(*(end - center)[::-1])
+        sweep = (a1 - a0 + np.pi) % (2 * np.pi) - np.pi   # 짧은 쪽으로
+        steps = max(4, int(abs(sweep) * actual / 0.04))
+        for t in np.linspace(0.0, 1.0, steps):
+            a = a0 + sweep * t
+            path.append(center + actual * np.array([np.cos(a), np.sin(a)]))
+
+    return _resample(np.array(path), points)
+
+
+def _circuit_loop(rng, radius, points, corner_radius):
+    """직선과 코너로 이루어진 서킷형. 실제 대회 코스가 이 모양이다.
+
+    꼭짓점까지의 거리를 크게 흔들면 코스가 안으로 깊게 파고들어
+    180도 가까이 돌아서는 헤어핀이 생긴다.
+    """
+    corners = int(rng.integers(5, 11))
     angles = np.linspace(0, 2 * np.pi, corners, endpoint=False) + \
-        rng.uniform(-0.25, 0.25, corners)
-    reach = radius * rng.uniform(0.55, 1.15, corners)
+        rng.uniform(-0.35, 0.35, corners)
+    reach = radius * rng.uniform(0.40, 1.20, corners)
     polygon = np.stack([reach * np.cos(angles), reach * np.sin(angles)], axis=1)
-    # 적게 깎으면 코너가 날카롭고, 많이 깎으면 둥글어진다
-    return _resample(_chaikin(polygon, int(rng.integers(3, 5))), points)
+    return _rounded_polygon(polygon, corner_radius, points)
 
 
 def make_track(seed=0, points=400):
@@ -174,9 +223,14 @@ def make_track(seed=0, points=400):
         rng = np.random.default_rng([seed, attempt])
         radius = rng.uniform(*RADIUS_RANGE)
         width = rng.uniform(*WIDTH_RANGE)
-        shape = _circuit_loop if rng.random() < 0.5 else _smooth_loop
 
-        center = shape(rng, radius, points)
+        # 코너 반경을 폭에 맞춰 정한다. 작게 주면 헤어핀이 된다.
+        # 차의 최소 회전 반경은 0.74m 이므로 그보다는 커야 돈다.
+        corner_radius = max(width / 2 * target, 0.85)
+        if rng.random() < 0.65:
+            center = _circuit_loop(rng, radius, points, corner_radius)
+        else:
+            center = _smooth_loop(rng, radius, points)
         # 길쭉하게 눌러서 실제 코스 같은 비율을 만든다
         aspect = rng.uniform(*ASPECT_RANGE)
         center = center / np.array([1.0, aspect])
@@ -206,6 +260,57 @@ def make_track(seed=0, points=400):
     center = np.stack([radius * np.cos(theta), radius * np.sin(theta)], axis=1)
     inner, outer = _offset_walls(center, width, rng)
     return center, inner, outer
+
+
+# 실제 코스는 가운데 섬이 있는 복잡한 공간이라, 코너를 돌면 시야가 확 바뀐다.
+# 단순한 고리 모양 트랙에서는 그런 일이 없어서 모델이 급변에 대비하지 못한다.
+# 장애물을 넣으면 시야 급변과 급조향이 동시에 생기고, 회피 자체도 배운다.
+OBSTACLE_COUNT = (0, 9)          # 트랙 하나에 놓을 개수
+OBSTACLE_SIZE = (0.15, 0.50)     # 반지름 [m]
+PASSAGE_MIN = 0.80               # 장애물 옆에 남겨 둘 통로 [m]. 차폭은 0.31m
+CHICANE_CHANCE = 0.45            # 좌우 번갈아 놓아 지그재그로 만들 확률
+
+
+def _blob(middle, size, rng, points=14):
+    angle = np.linspace(0, 2 * np.pi, points, endpoint=False)
+    wobble = size * rng.uniform(0.75, 1.25, points)
+    return middle + np.stack(
+        [wobble * np.cos(angle), wobble * np.sin(angle)], axis=1)
+
+
+def make_obstacles(seed, center, width):
+    """트랙 위에 장애물을 흩뿌린다. 지나갈 틈은 반드시 남긴다.
+
+    일부는 좌우로 번갈아 놓아 지그재그(시케인)를 만든다. 실제 코스에서
+    급조향이 요구되는 상황이 이렇게 생긴다.
+    """
+    rng = np.random.default_rng([seed, 4242])
+    low, high = OBSTACLE_COUNT
+    count = int(rng.integers(low, high)) if high > low else low
+    if count == 0:
+        return []
+
+    steps = len(center)
+    tangent = np.roll(center, -1, axis=0) - np.roll(center, 1, axis=0)
+    tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
+    normal = np.stack([-tangent[:, 1], tangent[:, 0]], axis=1)
+
+    # 서로 너무 붙지 않게 트랙을 균등히 나눠 자리를 잡는다
+    spacing = max(8, steps // 40)
+    slots = rng.permutation(steps // spacing)[:count] * spacing
+    chicane = rng.random() < CHICANE_CHANCE
+    blobs = []
+    for order, slot in enumerate(sorted(slots)):
+        size = rng.uniform(*OBSTACLE_SIZE)
+        room = width / 2 - size - PASSAGE_MIN / 2
+        if room <= 0.05:
+            continue                      # 이 트랙은 좁아서 못 놓는다
+        # 시케인이면 좌우를 번갈아, 아니면 아무 쪽이나
+        sign = (1.0 if order % 2 else -1.0) if chicane \
+            else float(rng.choice([-1.0, 1.0]))
+        side = sign * rng.uniform(0.45, 1.0) * room
+        blobs.append(_blob(center[slot] + normal[slot] * side, size, rng))
+    return blobs
 
 
 def as_segments(loop):
@@ -288,10 +393,15 @@ class F1TenthEnv(gym.Env):
 
     def _load_track(self, seed):
         self.center, inner, outer = make_track(seed)
-        a1, b1 = as_segments(inner)
-        a2, b2 = as_segments(outer)
-        self.seg_a = np.concatenate([a1, a2])
-        self.seg_b = np.concatenate([b1, b2])
+        self.blobs = make_obstacles(seed, self.center,
+                                    np.linalg.norm(outer - inner, axis=1).mean())
+        starts, ends = [], []
+        for loop in [inner, outer] + self.blobs:
+            a, b = as_segments(loop)
+            starts.append(a)
+            ends.append(b)
+        self.seg_a = np.concatenate(starts)
+        self.seg_b = np.concatenate(ends)
         self.inner, self.outer = inner, outer
 
         # 보상을 칸 수가 아니라 미터로 주기 위해 중심선 길이를 재 둔다.
@@ -350,11 +460,6 @@ class F1TenthEnv(gym.Env):
             self.track_seed = seed
             self._load_track(seed)
 
-        # 출발 지점도 트랙마다 다르게 한다. 항상 같은 곳에서 시작하면
-        # 그 지점 이후의 코너 순서를 외울 수 있다.
-        begin = int(np.random.default_rng([self.track_seed, 7]).integers(
-            len(self.center)))
-        self.center = np.roll(self.center, -begin, axis=0)
         start = self.center[0]
         heading = self.center[1] - self.center[0]
 
