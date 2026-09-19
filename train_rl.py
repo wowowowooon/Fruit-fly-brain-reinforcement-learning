@@ -14,6 +14,7 @@
 
 import argparse
 import copy
+import os
 from pathlib import Path
 
 import numpy as np
@@ -21,10 +22,11 @@ import torch
 from torch import nn
 
 from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
-from fly_driver import FlyDriver, LidarEncoder
+from fly_driver import FEATURE_LIMIT, FlyDriver, LidarEncoder
 from progress import Logger, Progress
 from racing_policy import RacingPolicy
 from sensor_noise import DomainRandomizer
+from vec_env import ParallelRunner
 
 GAMMA = 0.99          # 먼 미래를 얼마나 따질지
 LAMBDA = 0.95         # 이득 추정의 부드러움
@@ -61,6 +63,7 @@ class Runner:
                                  np.random.default_rng(seed * 1000 + i))
                 if randomize else None
             )
+        self.n_envs = n_envs
         self.track_pool = 400        # 이만큼의 서로 다른 트랙에서 뽑아 쓴다
         self.obs = [None] * n_envs
         self.done_stats = []
@@ -84,7 +87,8 @@ class Runner:
             raw = self.obs[i]
             f = self.encoders[i].raw(raw[:-1] * env.lidar_range, raw[-1], env.dt)
             out.append((f - mean) / std)
-        return np.stack(out).astype(np.float32)
+        return np.clip(np.stack(out), -FEATURE_LIMIT,
+                       FEATURE_LIMIT).astype(np.float32)
 
     def step(self, actions):
         """행동을 넣고 보상과 종료 여부를 돌려준다."""
@@ -128,7 +132,7 @@ def gae(rewards, values, dones, last_value):
 
 def rollout(runner, policy, hidden, stats, steps):
     """정책을 굴려서 학습에 쓸 조각을 모은다."""
-    n = len(runner.envs)
+    n = runner.n_envs
     obs = np.zeros((steps, n, policy.critic[0].in_features - policy.n_output),
                    dtype=np.float32)
     acts = np.zeros((steps, n, 2), dtype=np.float32)
@@ -228,7 +232,9 @@ def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--iters", type=int, default=300)
-    parser.add_argument("--envs", type=int, default=8)
+    parser.add_argument("--envs", type=int, default=32)
+    parser.add_argument("--workers", type=int, default=0,
+                        help="환경을 굴릴 프로세스 수. 0이면 자동")
     parser.add_argument("--steps", type=int, default=96)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=2e-4)
@@ -247,7 +253,8 @@ def main():
     args = parser.parse_args()
 
     torch.manual_seed(0)
-    torch.set_num_threads(max(1, torch.get_num_threads() - 1))
+    # 환경을 프로세스로 나눠 돌리므로 토치는 남은 코어만 쓴다
+    torch.set_num_threads(max(1, (os.cpu_count() or 4) // 4))
     log = Logger()
 
     log("=" * 68)
@@ -286,9 +293,12 @@ def main():
     else:
         anchor_teacher = None
 
-    runner = Runner(args.envs, args.beams, args.lidar_range,
-                    randomize=not args.no_noise)
-    log(f"동시에 굴리는 트랙 {args.envs}개, 한 번에 {args.steps}스텝")
+    workers = args.workers or min(8, max(1, os.cpu_count() // 2))
+    runner = ParallelRunner(args.envs, args.beams, args.lidar_range,
+                            workers=workers, randomize=not args.no_noise)
+    log(f"동시에 굴리는 트랙 {args.envs}개 "
+        f"(프로세스 {workers}개, 토치 스레드 {torch.get_num_threads()}개)")
+    log(f"한 번에 {args.steps}스텝")
     log(f"센서 손상 {'끔' if args.no_noise else '켬 (도메인 랜덤화)'}")
     log(f"수집량 {args.iters * args.envs * args.steps:,}스텝\n")
 
