@@ -200,7 +200,11 @@ def main():
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--entropy", type=float, default=0.004)
-    parser.add_argument("--beams", type=int, default=LIDAR_BEAMS)
+    # 학습은 빔을 줄여서 빠르게, 실차는 1081빔 그대로.
+    # 구역 대표 거리를 하위 10퍼센타일로 뽑아서 해상도에 거의 안 휘둘린다.
+    # 검증 결과 541빔이면 특징 차이가 99퍼센타일에서 0.12시그마로 무시할 만하고
+    # 시뮬이 3배 빠르다. (108빔은 7배 빠르지만 차이가 0.66시그마로 커진다)
+    parser.add_argument("--beams", type=int, default=541)
     parser.add_argument("--lidar-range", type=float, default=LIDAR_RANGE)
     parser.add_argument("--init", type=str, default="fly_model.pt")
     parser.add_argument("--out", type=str, default="fly_racer.pt")
@@ -264,6 +268,8 @@ def main():
                     "mean": driver.encoder.mean, "std": driver.encoder.std,
                     "lidar_range": args.lidar_range, "dt": CONTROL_DT,
                     "log_std": policy.log_std.detach(),
+                    "trained_beams": args.beams,
+                    "iteration": it,
                 }, args.out)
                 note += " 저장"
         note += f"  흔들림 {policy.log_std.exp().mean():.2f}"

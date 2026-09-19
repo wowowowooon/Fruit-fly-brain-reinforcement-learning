@@ -57,7 +57,13 @@ RADIUS_RANGE = (6.0, 20.0)     # 트랙 크기 [m]
 WIDTH_RANGE = (1.6, 4.0)       # 주행로 폭 [m]. 실제 코스는 2m 안팎으로 좁다
 ASPECT_RANGE = (1.0, 3.0)      # 가로:세로 비율. 실제 코스는 2.7:1 로 길쭉하다
 HARMONICS = (2, 3, 4, 5, 6)    # 높을수록 코너가 날카로워진다
-CURVE_MARGIN = 1.35            # 곡률 반경이 폭 절반의 이 배는 되어야 함
+CURVE_MARGIN = 1.30            # 곡률 반경이 폭 절반의 이 배는 되어야 함 (주행 한계)
+
+# 급코너를 '허용'만 하면 거의 안 나온다. 트랙마다 목표 급함을 정해 놓고
+# 그만큼 급한 코너가 실제로 있는 트랙만 받아들인다.
+#   실제 대회 코스는 최대 조향(포화)이 전체 주행의 5.9% 를 차지한다.
+#   허용만 했을 때 학습 트랙은 0.0% 였다. 그래서 모델이 덜 꺾었다.
+TIGHTNESS_RANGE = (CURVE_MARGIN, 3.2)   # 최소 곡률반경 / (폭 절반)
 
 
 # 실차는 매끄러운 수학 곡선이 아니라 스캔으로 만든 지저분한 벽을 본다.
@@ -163,7 +169,8 @@ def make_track(seed=0, points=400):
     같은 시드는 항상 같은 트랙이 나온다.
     """
     radius = width = None
-    for attempt in range(80):
+    target = np.random.default_rng([seed, 99]).uniform(*TIGHTNESS_RANGE)
+    for attempt in range(400):
         rng = np.random.default_rng([seed, attempt])
         radius = rng.uniform(*RADIUS_RANGE)
         width = rng.uniform(*WIDTH_RANGE)
@@ -183,8 +190,11 @@ def make_track(seed=0, points=400):
             center = center[::-1]
 
         center = _resample(center, points)
-        if _min_curve_radius(center) < width / 2 * CURVE_MARGIN:
-            continue                      # 벽이 접히는 급커브
+        tightness = _min_curve_radius(center) / (width / 2)
+        if tightness < CURVE_MARGIN:
+            continue                      # 벽이 접히는 급커브. 주행 불가
+        if tightness > target * 1.25:
+            continue                      # 너무 완만하다. 급코너가 없는 트랙
         if _self_overlaps(center, width):
             continue                      # 트랙끼리 겹침
 
@@ -385,8 +395,9 @@ class F1TenthEnv(gym.Env):
         self.steps += 1
 
         scan = self._scan()
-        # 라이다 한 점이 아니라 차체 전체로 판정한다.
-        self.crashed = bool(self._clearance() < BODY_RADIUS)
+        # 라이다 한 점이 아니라 차체 전체로 판정한다. 비싸므로 한 번만 잰다.
+        clearance = self._clearance()
+        self.crashed = bool(clearance < BODY_RADIUS)
 
         # 중심선을 따라 얼마나 나아갔는지로 보상
         index = self._progress()
@@ -410,7 +421,7 @@ class F1TenthEnv(gym.Env):
             "speed": self.speed,
             "crashed": self.crashed,
             "min_range": float(scan.min()),
-            "clearance": self._clearance(),
+            "clearance": clearance,
             "advance": advance,
             "lap_time": self.steps * self.dt,
         }
