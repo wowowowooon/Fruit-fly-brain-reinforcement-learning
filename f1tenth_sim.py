@@ -373,13 +373,15 @@ class F1TenthEnv(gym.Env):
 
     def __init__(self, n_beams=LIDAR_BEAMS, dt=CONTROL_DT, max_steps=4000,
                  track_seed=0, lidar_range=LIDAR_RANGE,
-                 latency=CONTROL_LATENCY):
+                 latency=CONTROL_LATENCY, laps=1):
         super().__init__()
         self.n_beams = n_beams
         self.dt = dt
         self.max_steps = max_steps
         self.track_seed = track_seed
         self.lidar_range = lidar_range
+        # 몇 바퀴를 돌고 끝낼지. 학습 데이터를 모을 때는 여러 바퀴가 이득이다.
+        self.laps = laps
         # 명령이 실제로 먹히기까지 몇 스텝 걸리는지
         self.latency_steps = int(round(latency / dt))
         self.beam_angles = np.linspace(-LIDAR_FOV / 2, LIDAR_FOV / 2, n_beams)
@@ -518,11 +520,12 @@ class F1TenthEnv(gym.Env):
         if self.crashed:
             reward -= 20.0
 
-        done = self.crashed or self.lap_progress >= step_count
+        done = self.crashed or self.lap_progress >= step_count * self.laps
         truncated = self.steps >= self.max_steps
 
         info = {
             "progress": self.lap_progress / step_count,
+            "laps_done": self.lap_progress / step_count,
             "speed": self.speed,
             "crashed": self.crashed,
             "min_range": float(scan.min()),

@@ -24,12 +24,14 @@ from raceline import StanleyRacer
 
 SEQ_LEN = 64          # RNN에 한 번에 넣는 시간 길이 (40Hz에서 1.6초)
 NOISE = 0.25          # 교사 행동에 섞는 흔들림
-EPISODE_STEPS = 1200  # 40Hz에서 30초. 트랙 한 바퀴보다 조금 길다
+EPISODE_STEPS = 2600  # 40Hz에서 65초. 트랙당 여러 바퀴를 돈다
+COLLECT_LAPS = 3      # 한 트랙에서 도는 바퀴 수. 레이싱 라인 계산이 비싸서
+                      # 같은 트랙을 더 활용하는 편이 싸게 먹힌다
 
 
-def make_env(args):
+def make_env(args, laps=1):
     return F1TenthEnv(n_beams=args.beams, dt=CONTROL_DT,
-                      lidar_range=args.lidar_range)
+                      lidar_range=args.lidar_range, laps=laps)
 
 
 def collect(args, rng, log=print):
@@ -37,7 +39,7 @@ def collect(args, rng, log=print):
 
     교사가 충돌한 에피소드는 버린다. 잘못된 시범을 배우면 독이 된다.
     """
-    env = make_env(args)
+    env = make_env(args, laps=COLLECT_LAPS)
     encoder = LidarEncoder(args.beams, lidar_range=args.lidar_range)
     episodes = []
     bar = Progress(args.tracks, "수집", log)
@@ -63,7 +65,11 @@ def collect(args, rng, log=print):
             if done or truncated:
                 break
 
-        if info["crashed"] or len(features) < SEQ_LEN:
+        # 충돌했으면 마지막 2초는 버린다. 그 구간이 잘못된 시범이다.
+        if info["crashed"]:
+            cut = max(0, len(features) - 80)
+            features, labels = features[:cut], labels[:cut]
+        if len(features) < SEQ_LEN:
             dropped += 1
         else:
             episodes.append((
@@ -114,7 +120,7 @@ def evaluate(driver, seeds, args, steps=1600):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tracks", type=int, default=60)
+    parser.add_argument("--tracks", type=int, default=150)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--lr", type=float, default=8e-4)
@@ -129,7 +135,7 @@ def main():
     log = Logger()
 
     log("=" * 68)
-    log("1단계 모방학습 — Follow the Gap 따라하기 (강화학습의 출발점)")
+    log("1단계 모방학습 — 레이싱 라인 따라하기 (강화학습의 출발점)")
     log("=" * 68)
     log(f"하드웨어  라이다 {args.beams}빔 / {args.lidar_range:.0f}m / "
         f"{1 / CONTROL_DT:.0f}Hz  (ROBORACER 규정 사양)")
