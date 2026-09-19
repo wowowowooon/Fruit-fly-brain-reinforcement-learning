@@ -13,6 +13,7 @@
 """
 
 import argparse
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +31,19 @@ LAMBDA = 0.95         # 이득 추정의 부드러움
 CLIP = 0.2            # 한 번에 정책을 얼마나 바꿀지 제한
 VALUE_COEF = 0.5
 MAX_GRAD = 0.5
+
+# 모방학습으로 배운 것을 잊지 않게 붙드는 항목.
+# 점수만 쫓다 보면 "일단 안 박고 도는 법"을 통째로 잊어버리는 구간이 생긴다.
+# 출발 시점의 정책에서 너무 멀어지면 약하게 당긴다. 계산 비용은 거의 없다.
+# 학습이 진행되면 계수를 줄여서, 나중에는 교사를 넘어설 수 있게 풀어 준다.
+ANCHOR_COEF = 0.05    # 처음 붙드는 세기
+ANCHOR_DECAY = 0.6    # 전체 학습의 이 지점까지 붙들고, 이후로는 0 으로
+
+
+def anchor_weight(step, total):
+    """지금 시점에 모방학습 정책을 얼마나 붙들지."""
+    span = max(total * ANCHOR_DECAY, 1.0)
+    return ANCHOR_COEF * max(0.0, 1.0 - step / span)
 
 
 class Runner:
@@ -148,7 +162,8 @@ def rollout(runner, policy, hidden, stats, steps):
     }
 
 
-def update(policy, optimizer, batch, epochs, entropy_coef):
+def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
+           teacher=None):
     """모은 조각으로 정책을 민다. 시간 순서를 지켜야 기억이 맞는다."""
     advantages, returns = gae(
         batch["rewards"], batch["values"], batch["dones"], batch["last_value"]
@@ -163,14 +178,27 @@ def update(policy, optimizer, batch, epochs, entropy_coef):
     alive = torch.from_numpy(1.0 - batch["dones"]).unsqueeze(-1)
     steps = obs.shape[0]
 
+    # 모방학습 정책이 같은 상황에서 뭐라고 했을지 미리 받아 둔다
+    reference = None
+    if anchor > 0.0 and teacher is not None:
+        with torch.no_grad():
+            hidden = batch["start_hidden"]
+            hidden = hidden.detach() if hidden is not None else None
+            picks = []
+            for t in range(steps):
+                mean, hidden = teacher(obs[t].unsqueeze(1), hidden)
+                picks.append(mean[:, 0])
+                hidden = hidden * alive[t]
+            reference = torch.stack(picks)
+
     losses = []
     for _ in range(epochs):
         hidden = batch["start_hidden"]
         if hidden is not None:
             hidden = hidden.detach()
-        policy_loss = value_loss = entropy_sum = 0.0
+        policy_loss = value_loss = entropy_sum = anchor_loss = 0.0
         for t in range(steps):
-            logp, entropy, value, hidden = policy.evaluate(
+            logp, entropy, value, mean, hidden = policy.evaluate(
                 obs[t].unsqueeze(1), hidden, acts[t].unsqueeze(1)
             )
             ratio = (logp[:, 0] - old_logps[t]).exp()
@@ -180,10 +208,14 @@ def update(policy, optimizer, batch, epochs, entropy_coef):
             ).mean()
             value_loss = value_loss + (value[:, 0] - ret[t]).pow(2).mean()
             entropy_sum = entropy_sum + entropy.mean()
+            if reference is not None:
+                anchor_loss = anchor_loss + (
+                    mean[:, 0] - reference[t]
+                ).pow(2).mean()
             hidden = hidden * alive[t]
 
         loss = (policy_loss + VALUE_COEF * value_loss
-                - entropy_coef * entropy_sum) / steps
+                - entropy_coef * entropy_sum + anchor * anchor_loss) / steps
         optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(policy.parameters(), MAX_GRAD)
@@ -201,6 +233,8 @@ def main():
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--entropy", type=float, default=0.004)
+    parser.add_argument("--anchor", type=float, default=ANCHOR_COEF,
+                        help="모방학습 정책을 붙드는 세기. 0이면 끔")
     # 학습은 빔을 줄여서 빠르게, 실차는 1081빔 그대로.
     # 구역 대표 거리를 하위 10퍼센타일로 뽑아서 해상도에 거의 안 휘둘린다.
     # 검증 결과 541빔이면 특징 차이가 99퍼센타일에서 0.12시그마로 무시할 만하고
@@ -236,6 +270,22 @@ def main():
         {"params": policy.critic.parameters(), "lr": args.lr * 3},
     ])
 
+    # 모방학습 시점의 정책을 얼려서 따로 들고 있는다.
+    # 학습 중 여기서 너무 멀어지면 되돌리는 힘으로 쓴다.
+    anchor_model = None
+    if args.anchor > 0.0:
+        anchor_model = copy.deepcopy(driver.model).eval()
+        for param in anchor_model.parameters():
+            param.requires_grad_(False)
+
+        def anchor_teacher(x, hidden):
+            return anchor_model(x, hidden)
+
+        log(f"모방학습 붙들기 계수 {args.anchor} "
+            f"(전체의 {ANCHOR_DECAY:.0%} 지점까지 서서히 풀림)")
+    else:
+        anchor_teacher = None
+
     runner = Runner(args.envs, args.beams, args.lidar_range,
                     randomize=not args.no_noise)
     log(f"동시에 굴리는 트랙 {args.envs}개, 한 번에 {args.steps}스텝")
@@ -250,7 +300,11 @@ def main():
     for it in range(1, args.iters + 1):
         batch = rollout(runner, policy, hidden, stats, args.steps)
         hidden = batch["end_hidden"].detach()
-        loss = update(policy, optimizer, batch, args.epochs, args.entropy)
+        pull = 0.0
+        if args.anchor > 0.0:
+            pull = anchor_weight(it, args.iters) * (args.anchor / ANCHOR_COEF)
+        loss = update(policy, optimizer, batch, args.epochs, args.entropy,
+                      anchor=pull, teacher=anchor_teacher)
 
         finished = runner.drain()
         history.extend(finished)
@@ -274,6 +328,8 @@ def main():
                 }, args.out)
                 note += " 저장"
         note += f"  흔들림 {policy.log_std.exp().mean():.2f}"
+        if pull > 0:
+            note += f"  붙듦 {pull:.3f}"
         bar.step(it, note)
     bar.done()
 

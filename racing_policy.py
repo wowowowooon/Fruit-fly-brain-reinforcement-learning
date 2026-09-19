@@ -64,12 +64,16 @@ class RacingPolicy(nn.Module):
         return action, logp, value, hidden
 
     def evaluate(self, x, hidden, action):
-        """모아 둔 행동이 지금 정책에서 얼마나 그럴듯한지 다시 계산한다."""
+        """모아 둔 행동이 지금 정책에서 얼마나 그럴듯한지 다시 계산한다.
+
+        평균 행동도 같이 돌려준다. 모방학습 정책과 얼마나 멀어졌는지
+        재는 데 쓴다.
+        """
         mean, value, hidden = self(x, hidden)
         dist = self.distribution(mean)
         logp = dist.log_prob(action).sum(-1)
         entropy = dist.entropy().sum(-1)
-        return logp, entropy, value, hidden
+        return logp, entropy, value, mean, hidden
 
     def policy_parameters(self):
         """초파리 회로 + 출력 헤드 + 흔들림 크기. 가치 함수는 뺀다."""
