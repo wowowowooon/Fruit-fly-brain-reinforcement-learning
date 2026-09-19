@@ -101,10 +101,13 @@ class FlyDriver:
         self.encoder = LidarEncoder(n_beams)
         self.device = device
         self.hidden = None
+        # 뷰어에서 들여다볼 수 있게 마지막 입력을 남겨둔다.
+        self.last_features = np.zeros(len(self.channels), dtype=np.float32)
 
     def reset(self):
         self.encoder.reset()
         self.hidden = None
+        self.last_features[:] = 0.0
 
     def save(self, path="fly_model.pt"):
         torch.save({
@@ -125,6 +128,7 @@ class FlyDriver:
     def act(self, obs):
         scan = obs[:-1] * LIDAR_RANGE
         features = self.encoder.encode(scan, obs[-1])
+        self.last_features = features
         x = torch.from_numpy(features).view(1, 1, -1).to(self.device)
         command, self.hidden = self.model(x, self.hidden)
         return command[0, 0].cpu().numpy()
