@@ -169,6 +169,7 @@ def rollout(runner, policy, hidden, stats, steps):
 
 
 def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
+           hold_polarity=None,
            teacher=None):
     """모은 조각으로 정책을 민다. 시간 순서를 지켜야 기억이 맞는다."""
     advantages, returns = gae(
@@ -226,6 +227,9 @@ def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
         loss.backward()
         nn.utils.clip_grad_norm_(policy.parameters(), MAX_GRAD)
         optimizer.step()
+        # 초파리 극성은 학습으로 뒤집히면 안 된다
+        if hold_polarity is not None:
+            hold_polarity()
         losses.append(float(loss.detach()))
 
     return float(np.mean(losses))
@@ -321,7 +325,8 @@ def main():
         if args.anchor > 0.0:
             pull = anchor_weight(it, args.iters) * (args.anchor / ANCHOR_COEF)
         loss = update(policy, optimizer, batch, args.epochs, args.entropy,
-                      anchor=pull, teacher=anchor_teacher)
+                      anchor=pull, teacher=anchor_teacher,
+                      hold_polarity=driver.hold_polarity)
 
         finished = runner.drain()
         history.extend(finished)

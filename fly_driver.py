@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 
 from build_wiring import (FlyController, apply_fly_wiring, build_wiring,
-                          wiring_report)
+                          enforce_polarity, polarity_kept, wiring_report)
 from paths import DATA, model as model_path
 from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE
 
@@ -162,6 +162,12 @@ def check_wiring(model, wiring, fly_wiring):
             )
         if counts["inhibitory"] == 0:
             raise RuntimeError("억제성 연결이 하나도 없습니다. 극성 누락")
+        kept = polarity_kept(model, wiring)
+        if kept < 0.999:
+            raise RuntimeError(
+                f"초파리 극성이 지켜지지 않습니다. 유지율 {kept:.1%} "
+                f"(가중치가 음수로 가면 억제성이 흥분성으로 뒤집힌다)")
+        counts["polarity"] = kept
     elif counts["links"] != counts["dense_units"]:
         raise RuntimeError(
             f"밀집이어야 하는데 연결이 {counts['links']:,}개뿐입니다 "
@@ -206,6 +212,11 @@ class FlyDriver:
         self.hidden = None
         # 뷰어에서 들여다볼 수 있게 마지막 입력을 남겨둔다.
         self.last_features = np.zeros(len(self.channels), dtype=np.float32)
+
+    def hold_polarity(self):
+        """학습 스텝마다 불러서 초파리 극성을 유지한다."""
+        if self.fly_wiring:
+            enforce_polarity(self.model, self.wiring)
 
     def reset(self):
         self.encoder.reset()

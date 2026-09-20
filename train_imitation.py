@@ -179,6 +179,8 @@ def main():
             loss.backward()
             nn.utils.clip_grad_norm_(driver.model.parameters(), 1.0)
             optimizer.step()
+            # 초파리 극성은 학습으로 뒤집히면 안 된다
+            driver.hold_polarity()
             losses.append(loss.item())
         scheduler.step()
 

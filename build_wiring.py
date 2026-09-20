@@ -178,6 +178,49 @@ def build_wiring(neurons, connections, channels, n_sectors, position=None):
     return wiring, ordered, info
 
 
+# 시냅스의 흥분/억제는 '신호를 얼마나 보태느냐'에 걸리는 성질이다.
+# CfC 안에서 그 역할을 하는 것은 ff1, ff2 두 갈래다. time_a, time_b 는
+# 그 둘 사이를 언제 오갈지(시간 상수)를 정하는 것이라 극성과 무관하다.
+# 넷 다 묶으면 시간 상수까지 한쪽으로 묶여서 회로가 굳는다.
+POLARITY_LAYERS = ("ff1", "ff2")
+
+
+def _recurrent_block(model, wiring):
+    """마스크와 가중치에서 '뉴런끼리' 부분만 잘라 쓰기 위한 경계."""
+    cell = model.rnn.rnn_cell.layer_0
+    return cell, cell.sparsity_mask.shape[1] - wiring.units
+
+
+def enforce_polarity(model, wiring):
+    """초파리가 정한 흥분/억제 부호를 학습이 못 뒤집게 붙든다 (Dale 법칙).
+
+    실효 가중치 = 가중치 x 마스크 다. 마스크에 ±1 을 넣어 두어도
+    가중치가 음수로 가면 억제성이 흥분성으로 뒤집힌다. 초기값이 이미
+    음수 반 양수 반이라, 그냥 두면 극성이 완전히 씻겨 나간다
+    (실제로 억제성 연결의 50.5% 가 뒤집힌 것을 확인했다).
+
+    가중치를 0 이상으로 붙들면 부호는 마스크가 정한 대로만 남는다.
+    학습 스텝마다 불러야 한다.
+    """
+    cell, n_in = _recurrent_block(model, wiring)
+    for name in POLARITY_LAYERS:
+        getattr(cell, name).weight.data[:, n_in:].clamp_(min=0.0)
+
+
+def polarity_kept(model, wiring):
+    """초파리 극성이 실제로 지켜지고 있는 비율. 1.0 이면 완전히 지켜짐."""
+    cell, n_in = _recurrent_block(model, wiring)
+    mask = cell.sparsity_mask.data[:, n_in:]
+    live = mask != 0
+    kept = []
+    for name in POLARITY_LAYERS:
+        weight = getattr(cell, name).weight.data[:, n_in:]
+        effective = weight * mask
+        agree = (effective[live] * mask[live]) >= 0
+        kept.append(float(agree.float().mean()))
+    return float(np.mean(kept))
+
+
 def apply_fly_wiring(model, wiring, strength=None):
     """초파리 배선을 실제로 신경망에 새긴다.
 
@@ -210,10 +253,15 @@ def apply_fly_wiring(model, wiring, strength=None):
     # 범위가 100배라 로그로 눌러서 쓴다.
     scale = torch.as_tensor(strength.T, dtype=mask.dtype)
     scale = torch.log1p(scale) / torch.log1p(scale[scale > 0].median())
-    for layer in (cell.ff1, cell.ff2, cell.time_a, cell.time_b):
+    scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+    for name in ("ff1", "ff2", "time_a", "time_b"):
+        layer = getattr(cell, name)
         block = layer.weight.data[:, n_in:]
-        layer.weight.data[:, n_in:] = block * torch.where(
-            scale > 0, scale, torch.ones_like(scale))
+        # 신호 갈래는 크기만 남긴다. 부호는 초파리 극성(마스크)이 정한다.
+        # 여기서 절댓값을 안 취하면 초기값부터 부호가 반반 섞여 버린다.
+        if name in POLARITY_LAYERS:
+            block = block.abs()
+        layer.weight.data[:, n_in:] = block * scale
     return model
 
 
