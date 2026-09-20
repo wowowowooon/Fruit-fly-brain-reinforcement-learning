@@ -7,6 +7,8 @@
   env = MapEnv(free_map)
 """
 
+from pathlib import Path
+
 import numpy as np
 import yaml
 from PIL import Image
@@ -48,17 +50,17 @@ class MapTrack:
     """맵 파일에서 벽과 주행 가능 영역을 읽어 둔다."""
 
     def __init__(self, yaml_path):
-        yaml_path = str(yaml_path)
-        with open(yaml_path, encoding="utf-8") as handle:
+        # 윈도우에서 역슬래시 경로가 들어와도 되게 pathlib 으로 다룬다
+        yaml_path = Path(yaml_path)
+        with yaml_path.open(encoding="utf-8") as handle:
             meta = yaml.safe_load(handle)
 
-        folder = yaml_path.rsplit("/", 1)[0] if "/" in yaml_path else "."
-        image = Image.open(f"{folder}/{meta['image']}").convert("L")
+        image = Image.open(yaml_path.parent / meta["image"]).convert("L")
         grid = np.asarray(image, dtype=np.float32) / 255.0
         if meta.get("negate", 0):
             grid = 1.0 - grid
 
-        self.name = meta["image"].rsplit(".", 1)[0]
+        self.name = Path(meta["image"]).stem
         self.resolution = float(meta["resolution"])
         self.origin = meta["origin"]
         # free_thresh 보다 비어 있으면 주행 가능. 회색(미탐색)은 벽으로 본다.

@@ -59,6 +59,20 @@ CONTROL_LATENCY = 0.05  # [s]
 RADIUS_RANGE = (6.0, 20.0)     # 트랙 크기 [m]
 WIDTH_RANGE = (1.7, 4.2)       # 주행로 폭 [m]. 실제 대회 코스가 1.83m 라
                                # 반드시 그보다 좁은 쪽까지 덮어야 한다
+# 폭을 균등하게 뽑으면 실제 코스만큼 좁은 트랙이 8% 밖에 안 나온다.
+# 제곱해서 좁은 쪽으로 몰아준다. 2.0m 이하가 40% 정도 나온다.
+WIDTH_SKEW = 2.0               # 클수록 좁은 트랙이 많아진다
+
+# 실제 대회 코스에는 180도로 되돌아오는 유턴이 있다. 일반 코너와 달리
+# 라이다가 출구를 못 보는 상태에서 최대 조향으로 돌아야 한다.
+# 이런 구간이 학습 트랙에 없으면 그 자리에서만 계속 박는다.
+HAIRPIN_SHARE = 0.35           # 이 비율만큼은 유턴이 있는 트랙으로 만든다
+HAIRPIN_SPIKES = (2, 5)        # 트랙 하나에 넣을 유턴 개수
+HAIRPIN_GAP = (1.15, 1.9)      # 유턴 두 다리 사이 간격 / 주행로 폭
+                               # 1.15면 벽 두께가 폭의 15%. 아주 빡빡한 유턴
+HAIRPIN_DEPTH = (0.35, 0.75)   # 유턴이 안쪽으로 파고드는 깊이 / 트랙 반경
+OUTER_WAYPOINTS = 4            # 유턴 사이 바깥 둘레를 몇 점으로 이을지.
+                               # 적으면 그 자리가 뾰족해져 주행 불가가 된다
 ASPECT_RANGE = (1.0, 3.0)      # 가로:세로 비율. 실제 코스는 2.7:1 로 길쭉하다
 HARMONICS = (2, 3, 4, 5, 6)    # 높을수록 코너가 날카로워진다
 CURVE_MARGIN = 1.30            # 곡률 반경이 폭 절반의 이 배는 되어야 함 (주행 한계)
@@ -113,7 +127,8 @@ def _self_overlaps(center, width):
     steps = len(center)
     offset = np.abs(np.arange(steps)[:, None] - np.arange(steps)[None, :])
     far_apart = np.minimum(offset, steps - offset) > steps // 8
-    return bool(gap[far_apart].min() < width * 1.15)
+    # 유턴에서는 두 다리가 가까워지는 게 정상이다. 벽이 남을 만큼만 떨어지면 된다.
+    return bool(gap[far_apart].min() < width + 0.22)
 
 
 def _resample(curve, points):
@@ -195,6 +210,64 @@ def _rounded_polygon(vertices, corner_radius, points):
     return _resample(np.array(path), points)
 
 
+def _hairpin_loop(rng, radius, points, corner_radius, width, aspect=1.0):
+    """180도 되돌아오는 유턴이 들어간 코스.
+
+    두 가지를 조심해야 유턴 반경이 살아남는다.
+
+    1. 예리한 꼭짓점 하나를 깎으면 실제 반경이 무너진다. 각이 좁을수록
+       호가 짧아져서 1.2m 를 요청해도 0.4m 가 나온다.
+       그래서 유턴을 직각 두 개로 쪼갠다. 들어가서 90도 꺾고, 폭만큼
+       건너간 뒤, 다시 90도 꺾어 나온다.
+
+           A ────────────╮ B
+                         │   <- 2*turn 만큼 건너간다
+           D ────────────╯ C
+
+    2. 길쭉하게 누르는 것을 유턴에까지 적용하면 유턴이 찌그러진다.
+       3:1 로 누르면 곡률이 9배가 된다. 그래서 유턴이 놓일 '자리'만
+       타원 위에서 정하고, 유턴 모양 자체는 누르지 않는다.
+    """
+    spikes = int(rng.integers(*HAIRPIN_SPIKES))
+    turn = corner_radius * 1.3          # 깎이면서 줄어드는 만큼 미리 키워 둔다
+    # 유턴 하나가 들어가려면 다리 길이가 반경의 5배는 필요하다.
+    # 그렇다고 트랙이 한없이 커지면 한 바퀴가 400m 가 되어 버린다.
+    radius = float(np.clip(max(radius, turn * 5.5), 6.0, 26.0))
+
+    base = np.linspace(0, 2 * np.pi, spikes, endpoint=False)
+    base = base + rng.uniform(-0.15, 0.15, spikes)
+    squash = np.array([1.0, aspect])
+    step = 2 * np.pi / spikes
+
+    vertices = []
+    for angle in base:
+        # 유턴이 놓일 자리는 타원 위에서 고른다 (트랙 전체가 길쭉해진다)
+        anchor = radius * np.array([np.cos(angle), np.sin(angle)]) / squash
+        far = float(np.linalg.norm(anchor)) * rng.uniform(0.92, 1.08)
+        out = anchor / max(np.linalg.norm(anchor), 1e-9)
+        side = np.array([-out[1], out[0]])
+
+        near = far * (1.0 - rng.uniform(*HAIRPIN_DEPTH))
+        # 다리가 짧으면 원호를 못 그리고, 너무 깊으면 반대쪽 유턴과 겹친다
+        near = float(np.clip(near, turn * 2.4, max(far - turn * 2.6, turn * 2.4)))
+
+        # 반시계로 돌므로 -side 쪽에서 들어와 +side 쪽으로 나간다.
+        # 순서를 뒤집으면 경로가 자기 자신을 가로질러 반경이 0 이 된다.
+        for reach, offset in ((far, -turn), (near, -turn),
+                              (near, turn), (far, turn)):
+            vertices.append(out * reach + side * offset)
+
+        # 다음 유턴까지 바깥으로 돌아간다. 이 경유점이 없으면 트랙 한가운데를
+        # 가로질러서 유턴끼리 서로 교차한다.
+        # 한 점만 찍으면 그 자리가 뾰족해진다. 타원을 따라 여러 점으로 잇는다.
+        for k in range(1, OUTER_WAYPOINTS + 1):
+            bend = angle + step * k / (OUTER_WAYPOINTS + 1)
+            vertices.append(radius * 1.15
+                            * np.array([np.cos(bend), np.sin(bend)]) / squash)
+
+    return _rounded_polygon(np.array(vertices), corner_radius, points)
+
+
 def _circuit_loop(rng, radius, points, corner_radius):
     """직선과 코너로 이루어진 서킷형. 실제 대회 코스가 이 모양이다.
 
@@ -223,18 +296,28 @@ def make_track(seed=0, points=400):
     for attempt in range(400):
         rng = np.random.default_rng([seed, attempt])
         radius = rng.uniform(*RADIUS_RANGE)
-        width = rng.uniform(*WIDTH_RANGE)
+        low, high = WIDTH_RANGE
+        width = low + (high - low) * rng.random() ** WIDTH_SKEW
 
         # 코너 반경을 폭에 맞춰 정한다. 작게 주면 헤어핀이 된다.
-        # 차의 최소 회전 반경은 0.74m 이므로 그보다는 커야 돈다.
-        corner_radius = max(width / 2 * target, 0.85)
-        if rng.random() < 0.65:
-            center = _circuit_loop(rng, radius, points, corner_radius)
-        else:
-            center = _smooth_loop(rng, radius, points)
+        # 차의 최소 회전 반경은 0.84m 이므로 그보다는 커야 돈다.
+        corner_radius = max(width / 2 * target, 0.95)
         # 길쭉하게 눌러서 실제 코스 같은 비율을 만든다
         aspect = rng.uniform(*ASPECT_RANGE)
-        center = center / np.array([1.0, aspect])
+        pick = rng.random()
+        if pick < HAIRPIN_SHARE:
+            # 유턴은 주행 한계에 최대한 가깝게 빡빡하게 만든다.
+            # target 을 그대로 쓰면 반경 4.5m 짜리 헐렁한 유턴이 나오는데,
+            # 실제 대회 코스의 유턴은 2.06m 다. 그러면 학습이 안 된다.
+            tight = max(width / 2 * CURVE_MARGIN * 1.08, 0.95)
+            # 유턴 트랙은 누른 뒤에 깎아야 반경이 유지된다. 안에서 처리한다.
+            center = _hairpin_loop(rng, radius, points, tight, width, aspect)
+        else:
+            if pick < HAIRPIN_SHARE + 0.40:
+                center = _circuit_loop(rng, radius, points, corner_radius)
+            else:
+                center = _smooth_loop(rng, radius, points)
+            center = center / np.array([1.0, aspect])
 
         # 좌우 뒤집기와 진행 방향 뒤집기.
         # 이걸 안 하면 모든 트랙이 반시계라서 좌회전만 배운다.
