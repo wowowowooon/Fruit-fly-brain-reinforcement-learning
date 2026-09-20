@@ -22,6 +22,7 @@ import torch
 from torch import nn
 
 from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
+from paths import model as model_path
 from fly_driver import N_MOTION, FEATURE_LIMIT, FlyDriver, LidarEncoder
 from progress import Logger, Progress
 from racing_policy import RacingPolicy
@@ -268,7 +269,7 @@ def main():
 
     driver = FlyDriver(n_beams=args.beams, lidar_range=args.lidar_range,
                        fly_wiring=not args.dense)
-    if Path(args.init).exists():
+    if model_path(args.init).exists():
         driver.load(args.init)
         log(f"출발점: {args.init} (모방학습 결과)")
     else:
