@@ -12,23 +12,34 @@
 
 import numpy as np
 
+from f1tenth_sim import MAX_ACCEL, YAW_RATE_MAX
 from fly_driver import N_MOTION
 
 # Hokuyo UST-10LX 실측 오차는 약 ±3cm. 그보다 넉넉히 잡아 흔든다.
 REAL_NOISE_M = 0.03
+
+# IMU 도 깨끗하지 않다. 특히 1:10 차는 모터와 노면 때문에 진동이 커서
+# 가속도계가 많이 튄다. 자이로는 영점이 주행 내내 조금씩 틀어져 있다.
+# 완벽한 IMU 만 보고 배우면 실차에서 그 값을 그대로 믿다가 무너진다.
+REAL_GYRO_NOISE = 0.02      # [rad/s]
+REAL_ACCEL_NOISE = 0.30     # [m/s^2]. 진동이 지배적이다
+REAL_GYRO_BIAS = 0.03       # [rad/s]
 
 
 class SensorFault:
     """라이다 손상 한 가지. 같은 씨앗이면 항상 같은 손상이 재현된다."""
 
     def __init__(self, name, noise_m=0.0, dropout=0.0, blind=None,
-                 max_range=None, stuck=0.0):
+                 max_range=None, stuck=0.0, gyro=0.0, accel=0.0, bias=0.0):
         self.name = name
         self.noise_m = noise_m        # 거리에 섞는 잡음 [m]
         self.dropout = dropout        # 측정 실패 비율 (사거리 끝으로 튄다)
         self.blind = blind            # ('L'|'R'|'front', 각도폭) 완전 차단
         self.max_range = max_range    # 실제보다 짧게 보이는 라이다
         self.stuck = stuck            # 값이 갱신 안 되고 굳는 비율
+        self.gyro = gyro              # 각속도 잡음 [rad/s]
+        self.accel = accel            # 가속도 잡음 [m/s^2]. 차체 진동이 크다
+        self.bias = bias              # 자이로 영점 오차 [rad/s]. 주행 내내 일정
 
     def __repr__(self):
         return f"SensorFault({self.name})"
@@ -70,6 +81,7 @@ class NoisyLidar:
         self.fault = fault or SensorFault("깨끗")
         self.rng = rng or np.random.default_rng(0)
         self.held = None
+        self.gyro_bias = 0.0
         self._blind_mask = self._make_blind_mask()
 
     def _make_blind_mask(self):
@@ -85,6 +97,8 @@ class NoisyLidar:
 
     def reset(self):
         self.held = None
+        # 영점 오차는 매 스텝 흔들리는 게 아니라 주행 내내 일정하다
+        self.gyro_bias = float(self.rng.normal(0.0, self.fault.bias))
 
     def __call__(self, obs):
         fault = self.fault
@@ -112,7 +126,20 @@ class NoisyLidar:
             self.held = scan.copy()
 
         scan = np.clip(scan, 0.0, self.lidar_range)
-        return np.concatenate([scan / self.lidar_range, obs[-1:]]).astype(np.float32)
+
+        # 관측 뒤쪽은 [속도, 각속도, 가속도] 다. obs[-1:] 로 자르면
+        # IMU 두 개가 통째로 사라진다.
+        motion = obs[-N_MOTION:].astype(np.float32).copy()
+        if N_MOTION >= 3:
+            if fault.gyro or fault.bias:
+                motion[1] += float(
+                    self.rng.normal(0.0, fault.gyro) + self.gyro_bias
+                ) / YAW_RATE_MAX
+            if fault.accel:
+                motion[2] += float(
+                    self.rng.normal(0.0, fault.accel)) / MAX_ACCEL
+            motion[1:] = np.clip(motion[1:], -1.5, 1.5)
+        return np.concatenate([scan / self.lidar_range, motion]).astype(np.float32)
 
 
 class DomainRandomizer:
@@ -134,7 +161,10 @@ class DomainRandomizer:
         s = self.strength
         # 절반은 거의 깨끗하게 둔다. 깨끗할 때도 잘 달려야 한다.
         if r.random() < 0.5:
-            fault = SensorFault("약함", noise_m=REAL_NOISE_M * r.uniform(0.5, 2.0))
+            fault = SensorFault(
+                "약함", noise_m=REAL_NOISE_M * r.uniform(0.5, 2.0),
+                gyro=REAL_GYRO_NOISE, accel=REAL_ACCEL_NOISE,
+                bias=REAL_GYRO_BIAS)
         else:
             fault = SensorFault(
                 "랜덤",
@@ -142,6 +172,9 @@ class DomainRandomizer:
                 dropout=r.random() * 0.35 * s,
                 max_range=self.lidar_range * r.uniform(0.6, 1.0),
                 stuck=r.random() * 0.15 * s,
+                gyro=REAL_GYRO_NOISE * r.uniform(1.0, 4.0) * s,
+                accel=REAL_ACCEL_NOISE * r.uniform(1.0, 3.0) * s,
+                bias=REAL_GYRO_BIAS * r.uniform(1.0, 3.0) * s,
             )
         self.lidar.fault = fault
         self.lidar._blind_mask = self.lidar._make_blind_mask()
