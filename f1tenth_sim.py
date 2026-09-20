@@ -592,10 +592,11 @@ class F1TenthEnv(gym.Env):
         self.prev_index = 0
         self.crashed = False
         # 아직 안 먹은 명령들. 지연을 흉내 낸다.
-        self.queued = deque(
-            [np.array([0.0, -1.0])] * self.latency_steps,
-            maxlen=max(self.latency_steps, 1),
-        )
+        # maxlen 을 주면 꽉 찬 상태에서 append 할 때 왼쪽이 먼저 버려진다.
+        # 그러면 대기열에 명령이 하나만 남아 지연이 절반이 된다
+        # (50ms 로 설정해 두고 실제로는 25ms 만 지연되고 있었다).
+        # popleft 로 꺼내므로 길이는 저절로 유지된다.
+        self.queued = deque([np.array([0.0, -1.0])] * self.latency_steps)
 
         scan = self._scan()
         return self._observe(scan), {}
