@@ -48,12 +48,12 @@ def main():
 
     runs = []
     gap = lambda obs: follow_the_gap(          # noqa: E731
-        obs[:-1] * env.lidar_range, env.beam_angles, env.lidar_range)
+        obs[:-N_MOTION] * env.lidar_range, env.beam_angles, env.lidar_range)
     runs.append(("고전 Follow the Gap", *drive(env, gap)))
 
     from pathlib import Path
     if Path(args.model).exists():
-        from fly_driver import FlyDriver
+        from fly_driver import N_MOTION, FlyDriver
         driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range,
                            dt=env.dt).load(args.model)
         runs.append(("초파리 배선", *drive(env, driver)))

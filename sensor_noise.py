@@ -12,6 +12,8 @@
 
 import numpy as np
 
+from fly_driver import N_MOTION
+
 # Hokuyo UST-10LX 실측 오차는 약 ±3cm. 그보다 넉넉히 잡아 흔든다.
 REAL_NOISE_M = 0.03
 
@@ -86,7 +88,7 @@ class NoisyLidar:
 
     def __call__(self, obs):
         fault = self.fault
-        scan = obs[:-1] * self.lidar_range
+        scan = obs[:-N_MOTION] * self.lidar_range
 
         if fault.max_range is not None:
             scan = np.minimum(scan, fault.max_range)

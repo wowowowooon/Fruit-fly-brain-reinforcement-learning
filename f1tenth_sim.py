@@ -27,6 +27,10 @@ MAX_STEER = 0.3735      # 최대 조향각 [rad] (21.4도). local_planner_node �
 MAX_SPEED = 7.0         # 목표 최고 속도 [m/s]. 보수적으로 잡았다
 MAX_ACCEL = 4.0         # 속도 변화율 한계 [m/s^2]
 
+# 자이로가 읽을 수 있는 최대 각속도. 자전거 모델에서 최고속 + 최대조향일 때다.
+#   yaw_rate = v / L * tan(steer) = 7.0 / 0.33 * tan(0.3735)
+YAW_RATE_MAX = MAX_SPEED / WHEELBASE * np.tan(MAX_STEER)
+
 # 차체가 뒷축 기준으로 차지하는 앞뒤 범위. 충돌 판정에 쓴다.
 BODY_BACK = -REAR_OVERHANG
 BODY_FRONT = FRONT_OVERHANG
@@ -471,7 +475,7 @@ class F1TenthEnv(gym.Env):
         self.beam_angles = np.linspace(-LIDAR_FOV / 2, LIDAR_FOV / 2, n_beams)
 
         # 관측: 라이다 거리(0~1) + 현재 속도(0~1)
-        self.observation_space = spaces.Box(0.0, 1.0, (n_beams + 1,), np.float32)
+        self.observation_space = spaces.Box(-1.0, 1.0, (n_beams + 3,), np.float32)
         # 행동: 조향(-1~1), 속도(-1~1)
         self.action_space = spaces.Box(-1.0, 1.0, (2,), np.float32)
 
@@ -530,9 +534,13 @@ class F1TenthEnv(gym.Env):
         return body_clearance(back, front, seg_a, seg_b)
 
     def _observe(self, scan):
+        # 라이다 + IMU. 실차도 /scan 과 /imu 두 가지를 받는다.
+        # 각속도는 자이로가, 가속도는 가속도계가 직접 준다.
         return np.concatenate([
             scan / self.lidar_range,
-            [self.speed / MAX_SPEED],
+            [self.speed / MAX_SPEED,
+             self.yaw_rate / YAW_RATE_MAX,
+             self.accel / MAX_ACCEL],
         ]).astype(np.float32)
 
     def _progress(self):
@@ -553,6 +561,8 @@ class F1TenthEnv(gym.Env):
         self.pos = start.copy()
         self.yaw = float(np.arctan2(heading[1], heading[0]))
         self.speed = 2.0
+        self.yaw_rate = 0.0
+        self.accel = 0.0
         self.steps = 0
         self.lap_progress = 0
         self.prev_index = 0
@@ -578,11 +588,14 @@ class F1TenthEnv(gym.Env):
 
         # 속도는 즉시 바뀌지 않는다
         limit = MAX_ACCEL * self.dt
-        self.speed += np.clip(target - self.speed, -limit, limit)
+        change = float(np.clip(target - self.speed, -limit, limit))
+        self.speed += change
+        self.accel = change / self.dt          # IMU 가속도계가 재는 값
 
         # 자전거 모델 (뒷축 기준)
+        self.yaw_rate = self.speed / WHEELBASE * np.tan(steer)  # 자이로
         self.pos = self.pos + self.speed * self.dt * self._heading()
-        self.yaw += self.speed / WHEELBASE * np.tan(steer) * self.dt
+        self.yaw += self.yaw_rate * self.dt
         self.steps += 1
 
         scan = self._scan()

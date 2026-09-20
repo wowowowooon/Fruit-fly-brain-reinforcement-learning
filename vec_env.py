@@ -12,7 +12,7 @@ import multiprocessing as mp
 import numpy as np
 
 from f1tenth_sim import F1TenthEnv
-from fly_driver import FEATURE_LIMIT, LidarEncoder
+from fly_driver import N_MOTION, FEATURE_LIMIT, LidarEncoder
 from sensor_noise import DomainRandomizer
 
 TRACK_POOL = 400          # 이만큼의 서로 다른 트랙에서 뽑아 쓴다
@@ -40,7 +40,8 @@ class _Slot:
 
     def _features(self, raw):
         return self.encoder.raw(
-            raw[:-1] * self.env.lidar_range, raw[-1], self.env.dt)
+            raw[:-N_MOTION] * self.env.lidar_range,
+            raw[-N_MOTION:], self.env.dt)
 
     def step(self, action):
         raw, reward, done, truncated, info = self.env.step(action)

@@ -22,7 +22,7 @@ import torch
 from torch import nn
 
 from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
-from fly_driver import FEATURE_LIMIT, FlyDriver, LidarEncoder
+from fly_driver import N_MOTION, FEATURE_LIMIT, FlyDriver, LidarEncoder
 from progress import Logger, Progress
 from racing_policy import RacingPolicy
 from sensor_noise import DomainRandomizer
@@ -85,7 +85,8 @@ class Runner:
         out = []
         for i, env in enumerate(self.envs):
             raw = self.obs[i]
-            f = self.encoders[i].raw(raw[:-1] * env.lidar_range, raw[-1], env.dt)
+            f = self.encoders[i].raw(raw[:-N_MOTION] * env.lidar_range,
+                                       raw[-N_MOTION:], env.dt)
             out.append((f - mean) / std)
         return np.clip(np.stack(out), -FEATURE_LIMIT,
                        FEATURE_LIMIT).astype(np.float32)

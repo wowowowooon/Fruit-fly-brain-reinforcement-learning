@@ -19,7 +19,7 @@ import pygame
 
 from controllers import follow_the_gap
 from f1tenth_sim import BODY_BACK, BODY_FRONT, CAR_WIDTH, F1TenthEnv
-from fly_driver import N_SECTORS, FlyDriver, sensor_channels
+from fly_driver import N_MOTION, N_SECTORS, FlyDriver, sensor_channels
 from raceline import StanleyRacer
 
 WIDTH, HEIGHT = 1000, 720
@@ -174,7 +174,7 @@ def main():
 
     channels = sensor_channels()
     prox_idx, loom_idx = field_order(channels, N_SECTORS)
-    speed_idx = len(channels) - 1
+    speed_idx = len(channels) - N_MOTION
     mode = "fly"
     paused = False
     total = 0.0
@@ -222,7 +222,7 @@ def main():
                     total = 0.0
 
         for _ in range(0 if paused else speed_mult):
-            scan = obs[:-1] * env.lidar_range
+            scan = obs[:-N_MOTION] * env.lidar_range
             if mode == "fly":
                 # act() 안에서 이미 변환했다. 또 부르면 접근율이 0이 된다.
                 action = driver.act(obs)
@@ -233,7 +233,7 @@ def main():
                 else:
                     action = follow_the_gap(scan, env.beam_angles,
                                             env.lidar_range)
-                features = driver.encoder.encode(scan, obs[-1], env.dt)
+                features = driver.encoder.encode(scan, obs[-N_MOTION:], env.dt)
             obs, reward, done, truncated, info = env.step(action)
             total += reward
             best = max(best, info["progress"])
@@ -253,7 +253,7 @@ def main():
             pygame.draw.lines(screen, (120, 200, 255), False,
                               [tuple(p) for p in loop], 2)
 
-        scan = obs[:-1] * env.lidar_range
+        scan = obs[:-N_MOTION] * env.lidar_range
         angles = env.beam_angles + env.yaw
         # 광선은 차 가운데가 아니라 앞쪽 라이다에서 나간다
         lidar = env.lidar_pos

@@ -57,7 +57,7 @@ def trace_lap(env, max_steps=8000):
 
     for _ in range(max_steps):
         path.append(env.pos.copy())
-        action = follow_the_gap(obs[:-1] * env.lidar_range,
+        action = follow_the_gap(obs[:-N_MOTION] * env.lidar_range,
                                 env.beam_angles, env.lidar_range)
         obs, _, _, _, info = env.step(action)
         if env._clearance() < BODY_RADIUS:
@@ -110,12 +110,12 @@ def main():
     print(f"코스 길이 약 {env.lap_length:.1f} m\n")
 
     print("주행 결과")
-    run(env, lambda obs: follow_the_gap(obs[:-1] * env.lidar_range,
+    run(env, lambda obs: follow_the_gap(obs[:-N_MOTION] * env.lidar_range,
                                         env.beam_angles, env.lidar_range),
         "고전 (Follow the Gap)")
 
     if Path(args.model).exists():
-        from fly_driver import FlyDriver
+        from fly_driver import N_MOTION, FlyDriver
         driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range,
                            dt=env.dt).load(args.model)
         run(env, driver, "초파리 배선")

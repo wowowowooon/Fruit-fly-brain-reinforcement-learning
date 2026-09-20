@@ -11,6 +11,7 @@
 
 import numpy as np
 
+from fly_driver import N_MOTION
 from f1tenth_sim import LIDAR_AHEAD, MAX_SPEED, MAX_STEER, WHEELBASE
 
 # --- 팀 FGM 노드 파라미터 (fgm_node.py 와 같아야 함) ---
@@ -98,5 +99,5 @@ class GapFollower:
 
     def act(self, obs):
         return follow_the_gap(
-            obs[:-1] * self.lidar_range, self.beam_angles, self.lidar_range
+            obs[:-N_MOTION] * self.lidar_range, self.beam_angles, self.lidar_range
         )

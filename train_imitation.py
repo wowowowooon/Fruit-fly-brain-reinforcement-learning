@@ -18,7 +18,7 @@ import torch
 from torch import nn
 
 from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
-from fly_driver import FlyDriver, LidarEncoder
+from fly_driver import N_MOTION, FlyDriver, LidarEncoder
 from progress import Logger, Progress
 from raceline import StanleyRacer
 
@@ -55,9 +55,9 @@ def collect(args, rng, log=print):
         info = {"crashed": False}
 
         for _ in range(EPISODE_STEPS):
-            scan = obs[:-1] * env.lidar_range
+            scan = obs[:-N_MOTION] * env.lidar_range
             action = racer.act(env.pos, env.yaw, env.speed)
-            features.append(encoder.raw(scan, obs[-1], env.dt))
+            features.append(encoder.raw(scan, obs[-N_MOTION:], env.dt))
             labels.append(action.copy())
 
             noisy = np.clip(action + rng.normal(0, NOISE, 2), -1, 1)

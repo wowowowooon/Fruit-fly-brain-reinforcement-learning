@@ -19,7 +19,7 @@ import numpy as np
 
 from controllers import follow_the_gap
 from f1tenth_sim import LIDAR_BEAMS, F1TenthEnv
-from fly_driver import LidarEncoder
+from fly_driver import N_MOTION, LidarEncoder
 
 CANDIDATES = (108, 271, 541)
 
@@ -38,10 +38,10 @@ def features_along(env_full, beams, seeds, steps=500):
         for enc in encoders.values():
             enc.reset()
         for _ in range(steps):
-            scan = obs[:-1] * env_full.lidar_range
+            scan = obs[:-N_MOTION] * env_full.lidar_range
             for n in collected:
                 collected[n].append(
-                    encoders[n].raw(scan[picks[n]], obs[-1], env_full.dt)
+                    encoders[n].raw(scan[picks[n]], obs[-N_MOTION:], env_full.dt)
                 )
             action = follow_the_gap(scan, env_full.beam_angles,
                                     env_full.lidar_range)
@@ -73,7 +73,7 @@ def main():
         t0 = time.perf_counter()
         for _ in range(400):
             obs, _, d, t, _ = e.step(
-                follow_the_gap(obs[:-1] * e.lidar_range, e.beam_angles,
+                follow_the_gap(obs[:-N_MOTION] * e.lidar_range, e.beam_angles,
                                e.lidar_range))
             if d or t:
                 obs, _ = e.reset(seed=0)
@@ -91,7 +91,7 @@ def main():
             obs, _ = e.reset(seed=seed)
             for _ in range(4000):
                 obs, _, d, t, info = e.step(
-                    follow_the_gap(obs[:-1] * e.lidar_range, e.beam_angles,
+                    follow_the_gap(obs[:-N_MOTION] * e.lidar_range, e.beam_angles,
                                    e.lidar_range))
                 if d or t:
                     break

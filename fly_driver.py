@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from build_wiring import FlyController, build_wiring
+from build_wiring import (FlyController, apply_fly_wiring, build_wiring,
+                          wiring_report)
 from paths import DATA, model as model_path
 from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE
 
@@ -37,8 +38,16 @@ def sensor_channels(n_sectors=N_SECTORS):
         for sector in range(n_sectors):
             channels.append((f"prox_{side}{sector}", "prox", side, sector))
             channels.append((f"loom_{side}{sector}", "loom", side, sector))
+    # 자기 움직임(IMU). 초파리에서 HS/LPT 광역 세포가 하는 일이 바로
+    # "내가 지금 얼마나 돌고 있나"를 읽는 것이다. 자이로가 재는 값과 같다.
     channels.append(("speed", "speed", "both", None))
+    channels.append(("yaw_rate", "speed", "both", None))
+    channels.append(("accel", "speed", "both", None))
     return channels
+
+
+# 라이다 뒤에 붙는 자기 움직임 값의 개수 (속도, 각속도, 가속도)
+N_MOTION = 3
 
 
 class LidarEncoder:
@@ -90,8 +99,11 @@ class LidarEncoder:
         self.prev_prox = None
         self.loom[:] = 0.0
 
-    def raw(self, scan, speed_norm, dt=CONTROL_DT):
-        """정규화 전 특징. 구역별 근접도와 그 변화율."""
+    def raw(self, scan, motion, dt=CONTROL_DT):
+        """정규화 전 특징. 구역별 근접도, 그 변화율, 그리고 자기 움직임.
+
+        motion: [속도, 각속도, 가속도] 를 정규화한 값 (IMU)
+        """
         scan = np.minimum(scan, self.lidar_range)
         near = np.array([
             np.partition(scan[beams], rank)[rank]
@@ -108,35 +120,84 @@ class LidarEncoder:
         self.loom = self.loom_smooth * self.loom + (1 - self.loom_smooth) * raw_loom
         self.prev_prox = prox
 
-        # 채널 순서: 구역마다 [근접도, 접근율], 맨 끝에 속도
-        values = np.empty(2 * len(prox) + 1, dtype=np.float32)
-        values[0:-1:2] = prox
-        values[1:-1:2] = self.loom
-        values[-1] = speed_norm
+        # 채널 순서: 구역마다 [근접도, 접근율], 맨 끝에 자기 움직임 3개
+        motion = np.atleast_1d(np.asarray(motion, dtype=np.float32))
+        values = np.empty(2 * len(prox) + len(motion), dtype=np.float32)
+        body = values[:-len(motion)]
+        body[0::2] = prox
+        body[1::2] = self.loom
+        values[-len(motion):] = motion
         return values
 
-    def encode(self, scan, speed_norm, dt=CONTROL_DT):
-        return self.normalize(self.raw(scan, speed_norm, dt))
+    def encode(self, scan, motion, dt=CONTROL_DT):
+        return self.normalize(self.raw(scan, motion, dt))
+
+
+def load_eye_position():
+    """시각 뉴런이 시야의 어느 방향을 보는지. 없으면 None."""
+    path = DATA / "sensory_position.csv"
+    if not path.exists():
+        print(f"경고: {path.name} 이 없습니다. 시각 뉴런을 시야 구역에 "
+              f"임의로 나눠 넣습니다. tools/fetch_eye_position.py 를 "
+              f"먼저 돌리세요.")
+        return None
+    frame = pd.read_csv(path)
+    return dict(zip(frame.bodyId, frame.front_to_side))
+
+
+def check_wiring(model, wiring, fly_wiring):
+    """배선이 의도대로 들어갔는지 확인하고, 아니면 멈춘다.
+
+    ncps 가 초파리 배선을 조용히 무시하고 밀집 신경망을 만들어 버린 적이
+    있다. 7시간짜리 학습을 돌리고 나서야 알았다. 그 뒤로는 학습을 시작하기
+    전에 반드시 센다.
+    """
+    counts = wiring_report(model, wiring)
+    if fly_wiring:
+        if counts["links"] != counts["expected"]:
+            raise RuntimeError(
+                f"초파리 배선이 안 들어갔습니다. "
+                f"연결 {counts['links']:,}개 (있어야 할 값 "
+                f"{counts['expected']:,}개)"
+            )
+        if counts["inhibitory"] == 0:
+            raise RuntimeError("억제성 연결이 하나도 없습니다. 극성 누락")
+    elif counts["links"] != counts["dense_units"]:
+        raise RuntimeError(
+            f"밀집이어야 하는데 연결이 {counts['links']:,}개뿐입니다 "
+            f"(있어야 할 값 {counts['dense_units']:,}개)"
+        )
+    return counts
 
 
 class FlyDriver:
-    """관측을 받아 조향과 속도를 내놓는다."""
+    """관측을 받아 조향과 속도를 내놓는다.
+
+    fly_wiring=True  초파리 배선 (C안). 연결 9,992개
+    fly_wiring=False 전부 연결 (B안, 비교용). 연결 758,641개
+    """
 
     name = "초파리 배선 (CfC)"
 
     def __init__(self, n_beams=LIDAR_BEAMS, device="cpu",
-                 lidar_range=LIDAR_RANGE, dt=CONTROL_DT):
+                 lidar_range=LIDAR_RANGE, dt=CONTROL_DT, fly_wiring=True):
         neurons = pd.read_csv(DATA / "subcircuit_neurons.csv")
         connections = pd.read_csv(DATA / "subcircuit_connections.csv")
 
         self.channels = sensor_channels()
         self.wiring, self.ordered, self.info = build_wiring(
-            neurons, connections, self.channels, N_SECTORS
+            neurons, connections, self.channels, N_SECTORS,
+            position=load_eye_position(),
         )
         self.model = FlyController(
             self.wiring, len(self.channels),
             self.info["n_drive"], self.info["n_steering"],
+            steer_sign=self.info["steer_sign"],
         ).to(device)
+        if fly_wiring:
+            apply_fly_wiring(self.model, self.wiring, self.info["strength"])
+        self.fly_wiring = fly_wiring
+        check_wiring(self.model, self.wiring, fly_wiring)
 
         self.encoder = LidarEncoder(n_beams, lidar_range=lidar_range)
         self.lidar_range = lidar_range
@@ -162,11 +223,23 @@ class FlyDriver:
             "lidar_range": self.lidar_range,
             "n_sectors": N_SECTORS,
             "dt": self.dt,
+            # 어떤 배선으로 학습된 모델인지. 섞이면 비교가 무의미해진다.
+            "fly_wiring": self.fly_wiring,
+            "n_motion": N_MOTION,
+            "n_channel": len(self.channels),
         }, path)
 
     def load(self, path="fly_model.pt"):
         path = model_path(path)
         bundle = torch.load(path, map_location=self.device, weights_only=False)
+
+        trained_wiring = bundle.get("fly_wiring")
+        if trained_wiring is not None and trained_wiring != self.fly_wiring:
+            raise RuntimeError(
+                f"배선이 다른 모델입니다. 파일은 "
+                f"{'초파리' if trained_wiring else '밀집'}로 학습됐는데 "
+                f"{'초파리' if self.fly_wiring else '밀집'}로 불러오려 합니다."
+            )
         self.model.load_state_dict(bundle["model"])
         if bundle["mean"] is not None:
             self.encoder.set_stats(bundle["mean"], bundle["std"])
@@ -180,12 +253,23 @@ class FlyDriver:
 
     @torch.no_grad()
     def act(self, obs):
-        scan = obs[:-1] * self.lidar_range
-        features = self.encoder.encode(scan, obs[-1], self.dt)
+        scan = obs[:-N_MOTION] * self.lidar_range
+        features = self.encoder.encode(scan, obs[-N_MOTION:], self.dt)
         self.last_features = features
         x = torch.from_numpy(features).view(1, 1, -1).to(self.device)
         command, self.hidden = self.model(x, self.hidden)
         return command[0, 0].cpu().numpy()
+
+    def effective_params(self):
+        """실제로 살아 있는 연결만 센다.
+
+        마스크로 꺼 놓은 자리에도 파라미터는 남아 있다. 저장 용량은 같지만
+        계산에 쓰이는 것은 켜진 자리뿐이라, 비교할 때는 이쪽을 봐야 한다.
+        """
+        mask = self.model.rnn.rnn_cell.layer_0.sparsity_mask.data
+        live = int((mask != 0).sum())
+        # 연결 하나마다 ff1/ff2/time_a/time_b 네 벌
+        return live * 4 + self.wiring.units * 4 + 14
 
     def summary(self):
         synapses = int(np.abs(self.wiring.adjacency_matrix).sum())
@@ -201,7 +285,9 @@ class FlyDriver:
             f"입력 채널 {len(self.channels)}개 -> 센서 배선 {self.info['links']}개\n"
             f"운동 뉴런  조향 {self.info['n_steering']}개 -> 조향축, "
             f"구동 {self.info['n_drive']}개 -> 속도축\n"
-            f"학습 파라미터 {params:,}개"
+            f"배선 {'초파리' if self.fly_wiring else '전부 연결 (비교군)'}\n"
+            f"파라미터 저장 {params:,}개, 실제 사용 "
+            f"{self.effective_params():,}개"
         )
 
 
