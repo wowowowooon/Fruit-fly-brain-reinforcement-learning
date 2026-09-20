@@ -250,6 +250,8 @@ def main():
     parser.add_argument("--lidar-range", type=float, default=LIDAR_RANGE)
     parser.add_argument("--init", type=str, default="fly_model.pt")
     parser.add_argument("--out", type=str, default="fly_racer.pt")
+    parser.add_argument("--dense", action="store_true",
+                        help="초파리 배선 대신 전부 연결 (B안 비교군)")
     parser.add_argument("--no-noise", action="store_true")
     args = parser.parse_args()
 
@@ -264,7 +266,8 @@ def main():
     log("2단계 강화학습 — 교사를 넘어 랩타임 줄이기")
     log("=" * 68)
 
-    driver = FlyDriver(n_beams=args.beams, lidar_range=args.lidar_range)
+    driver = FlyDriver(n_beams=args.beams, lidar_range=args.lidar_range,
+                       fly_wiring=not args.dense)
     if Path(args.init).exists():
         driver.load(args.init)
         log(f"출발점: {args.init} (모방학습 결과)")

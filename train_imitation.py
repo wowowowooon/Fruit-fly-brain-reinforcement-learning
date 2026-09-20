@@ -128,6 +128,8 @@ def main():
     parser.add_argument("--lidar-range", type=float, default=LIDAR_RANGE)
     parser.add_argument("--eval-every", type=int, default=3)
     parser.add_argument("--out", type=str, default="fly_model.pt")
+    parser.add_argument("--dense", action="store_true",
+                        help="초파리 배선 대신 전부 연결 (B안 비교군)")
     args = parser.parse_args()
 
     rng = np.random.default_rng(0)
@@ -153,7 +155,8 @@ def main():
     baseline = np.concatenate([y for _, y in episodes]).var(axis=0).mean()
     log(f"상수로 찍었을 때 오차 {baseline:.4f} (이보다 낮아야 배운 것)\n")
 
-    driver = FlyDriver(n_beams=args.beams, lidar_range=args.lidar_range)
+    driver = FlyDriver(n_beams=args.beams, lidar_range=args.lidar_range,
+                       fly_wiring=not args.dense)
     driver.encoder.set_stats(mean, std)
     log(driver.summary())
     log("")
