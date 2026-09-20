@@ -6,6 +6,14 @@
   motor   : 하강 뉴런              -> 조향, 가감속
 """
 
+import sys
+from pathlib import Path
+
+# 상위 폴더에 있는 공통 모듈을 찾을 수 있게 한다
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from paths import DATA
+
 import os
 from getpass import getpass
 
@@ -110,8 +118,8 @@ def main():
     )
     print(f"연결 {len(connections)}개\n")
 
-    neurons.to_csv("circuit_neurons.csv", index=False)
-    connections.to_csv("circuit_connections.csv", index=False)
+    neurons.to_csv(DATA / "circuit_neurons.csv", index=False)
+    connections.to_csv(DATA / "circuit_connections.csv", index=False)
     print("저장: circuit_neurons.csv, circuit_connections.csv")
 
     density = len(connections) / (len(neurons) ** 2)
@@ -121,3 +129,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

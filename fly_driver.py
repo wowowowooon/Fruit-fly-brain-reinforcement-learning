@@ -11,6 +11,7 @@ import pandas as pd
 import torch
 
 from build_wiring import FlyController, build_wiring
+from paths import DATA, model as model_path
 from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE
 
 N_SECTORS = 9          # 한쪽 시야를 몇 구역으로 나눌지
@@ -125,8 +126,8 @@ class FlyDriver:
 
     def __init__(self, n_beams=LIDAR_BEAMS, device="cpu",
                  lidar_range=LIDAR_RANGE, dt=CONTROL_DT):
-        neurons = pd.read_csv("subcircuit_neurons.csv")
-        connections = pd.read_csv("subcircuit_connections.csv")
+        neurons = pd.read_csv(DATA / "subcircuit_neurons.csv")
+        connections = pd.read_csv(DATA / "subcircuit_connections.csv")
 
         self.channels = sensor_channels()
         self.wiring, self.ordered, self.info = build_wiring(
@@ -151,6 +152,7 @@ class FlyDriver:
         self.last_features[:] = 0.0
 
     def save(self, path="fly_model.pt"):
+        path = model_path(path)
         # 하드웨어 사양을 같이 넣어 둔다. 사거리가 다르면 입력 분포가 달라서
         # 같은 가중치를 써도 엉뚱하게 달린다. 실차로 옮길 때 확인용.
         torch.save({
@@ -163,6 +165,7 @@ class FlyDriver:
         }, path)
 
     def load(self, path="fly_model.pt"):
+        path = model_path(path)
         bundle = torch.load(path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(bundle["model"])
         if bundle["mean"] is not None:

@@ -13,6 +13,8 @@ __pycache__/
 
 # 학습 로그 - 돌릴 때마다 새로 쓰임
 train.log
+logs/
+*.log
 
 # neuPrint 토큰이 실수로 들어갈 만한 곳
 .env

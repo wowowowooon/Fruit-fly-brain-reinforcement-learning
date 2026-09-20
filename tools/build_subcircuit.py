@@ -4,6 +4,14 @@
 학습은 하지 않는다. 추리기만 한다.
 """
 
+import sys
+from pathlib import Path
+
+# 상위 폴더에 있는 공통 모듈을 찾을 수 있게 한다
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from paths import DATA
+
 import networkx as nx
 import pandas as pd
 
@@ -33,8 +41,8 @@ def within_hops(graph, seeds, hops):
 
 
 def main():
-    neurons = pd.read_csv("circuit_neurons.csv")
-    connections = pd.read_csv("circuit_connections.csv")
+    neurons = pd.read_csv(DATA / "circuit_neurons.csv")
+    connections = pd.read_csv(DATA / "circuit_connections.csv")
     print(f"전체: 뉴런 {len(neurons)}개, 연결 {len(connections)}개")
 
     edges = connections[connections.weight >= MIN_WEIGHT]
@@ -86,8 +94,8 @@ def main():
     print("\n남은 타입 상위 10종")
     print(sub_neurons.type.value_counts().head(10).to_string())
 
-    sub_neurons.to_csv("subcircuit_neurons.csv", index=False)
-    sub_edges.to_csv("subcircuit_connections.csv", index=False)
+    sub_neurons.to_csv(DATA / "subcircuit_neurons.csv", index=False)
+    sub_edges.to_csv(DATA / "subcircuit_connections.csv", index=False)
     print("\n저장: subcircuit_neurons.csv, subcircuit_connections.csv")
 
     n = len(sub_neurons)
@@ -97,3 +105,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

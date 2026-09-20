@@ -7,6 +7,12 @@
 빔 개수와 무관해야 한다. 실제 트랙과 거친 벽에서도 그런지 확인한다.
 """
 
+import sys
+from pathlib import Path
+
+# 상위 폴더에 있는 공통 모듈을 찾을 수 있게 한다
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import time
 
 import numpy as np
@@ -99,3 +105,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

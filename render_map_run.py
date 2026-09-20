@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from controllers import follow_the_gap
 from f1tenth_sim import BODY_RADIUS
 from test_on_map import find_start, trace_lap
+from paths import OUTPUTS
 from track_map import MapEnv, MapTrack
 
 
@@ -35,8 +36,8 @@ def drive(env, controller, max_steps=6000):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("map_yaml")
-    parser.add_argument("--out", default="map_run.png")
-    parser.add_argument("--model", default="fly_model.pt")
+    parser.add_argument("--out", default=str(OUTPUTS / "map_run.png"))
+    parser.add_argument("--model", default="fly_racer.pt")
     args = parser.parse_args()
 
     track = MapTrack(args.map_yaml)

@@ -1,5 +1,11 @@
 """커넥톰 인접행렬을 그대로 학습 가능한 조향 컨트롤러로 꽂을 수 있는지 검증."""
 
+import sys
+from pathlib import Path
+
+# 상위 폴더에 있는 공통 모듈을 찾을 수 있게 한다
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import numpy as np
 import torch
 from torch import nn
@@ -68,3 +74,4 @@ for _ in range(100):
 
 print(f"\nloss {losses[0]:.4f} -> {losses[-1]:.4f}")
 print("OK: wiring fixed, weights trainable" if losses[-1] < losses[0] * 0.5 else "NG")
+

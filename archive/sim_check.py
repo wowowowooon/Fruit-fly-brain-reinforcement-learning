@@ -1,5 +1,13 @@
 """F1TENTH 환경이 제대로 도는지 확인. 벽 따라가는 기본 주행도 같이 본다."""
 
+import sys
+from pathlib import Path
+
+# 상위 폴더에 있는 공통 모듈을 찾을 수 있게 한다
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from paths import OUTPUTS
+
 import numpy as np
 from PIL import Image
 
@@ -43,5 +51,6 @@ width, height = frames[0].size
 strip = Image.new("RGB", (width * len(frames), height), "white")
 for i, frame in enumerate(frames):
     strip.paste(frame, (i * width, 0))
-strip.save("f1tenth_preview.png")
-print(f"\n저장: f1tenth_preview.png ({len(frames)}프레임)")
+strip.save(OUTPUTS / "f1tenth_preview.png")
+print(f"\n저장: outputs/f1tenth_preview.png ({len(frames)}프레임)")
+
