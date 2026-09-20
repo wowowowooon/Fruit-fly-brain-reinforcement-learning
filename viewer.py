@@ -1,12 +1,17 @@
 """주행을 눈으로 보는 뷰어.
 
-  F  초파리 회로 컨트롤러
+  F  초파리 회로 (학습된 모델)
   G  Follow the Gap (고전 방식, 비교 기준)
+  T  교사 (레이싱 라인 + Stanley). 라인도 같이 그린다
   R  트랙 새로 뽑기
-  스페이스  일시정지
-  ESC  종료
+  +/-  배속        스페이스  일시정지        ESC  종료
+
+  python viewer.py
+  python viewer.py --model fly_model.pt
+  python viewer.py --map "C:/.../ifac_roboracer.yaml"
 """
 
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +20,7 @@ import pygame
 from controllers import follow_the_gap
 from f1tenth_sim import BODY_BACK, BODY_FRONT, CAR_WIDTH, F1TenthEnv
 from fly_driver import N_SECTORS, FlyDriver, sensor_channels
+from raceline import StanleyRacer
 
 WIDTH, HEIGHT = 1000, 720
 TRACK_VIEW = 720
@@ -55,17 +61,30 @@ def field_order(channels, n_sectors):
 
 
 class Camera:
-    """월드 좌표를 화면 좌표로."""
+    """월드 좌표를 화면 좌표로. 트랙 전체가 화면에 들어오게 맞춘다."""
 
-    def __init__(self, track):
-        span = np.abs(track).max() * 2.2
-        self.scale = TRACK_VIEW / span
-        self.offset = np.array([TRACK_VIEW / 2, TRACK_VIEW / 2])
+    def __init__(self, points):
+        points = np.atleast_2d(points)
+        low, high = points.min(axis=0), points.max(axis=0)
+        span = float(np.max(high - low)) * 1.12
+        self.scale = TRACK_VIEW / max(span, 1e-6)
+        middle = (low + high) / 2
+        self.offset = (np.array([TRACK_VIEW / 2, TRACK_VIEW / 2])
+                       - np.array([middle[0], -middle[1]]) * self.scale)
 
     def __call__(self, points):
-        pts = np.atleast_2d(points) * self.scale
+        pts = np.atleast_2d(points).astype(float) * self.scale
         pts[:, 1] *= -1
         return pts + self.offset
+
+
+def draw_walls(camera, seg_a, seg_b):
+    """벽은 한 번만 그려 배경으로 들고 있는다. 매 프레임 다시 그리면 느리다."""
+    surface = pygame.Surface((TRACK_VIEW, HEIGHT))
+    surface.fill(BG)
+    for a, b in zip(camera(seg_a), camera(seg_b)):
+        pygame.draw.line(surface, WALL, tuple(a), tuple(b), 2)
+    return surface
 
 
 def draw_loop(surface, camera, loop):
@@ -112,6 +131,12 @@ def draw_field(surface, font, x, y, label, values, width=220, height=40):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", default="fly_racer.pt")
+    parser.add_argument("--map", default=None, help="ROS 점유격자 .yaml")
+    parser.add_argument("--beams", type=int, default=541)
+    args = parser.parse_args()
+
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("초파리 회로 주행")
@@ -119,18 +144,33 @@ def main():
     big = load_font(19, bold=True)
     clock = pygame.time.Clock()
 
-    env = F1TenthEnv()
-    driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range, dt=env.dt)
-    trained = Path("fly_model.pt").exists()
-    if trained:
-        driver.load()
-        print("학습된 모델을 불러왔습니다.")
+    if args.map:
+        from test_on_map import find_start, trace_lap
+        from track_map import MapEnv, MapTrack
+        track = MapTrack(args.map)
+        env = MapEnv(track, n_beams=args.beams)
+        env.start_pose = find_start(track, env)
+        env.set_centerline(trace_lap(env)[0])
+        print(f"실제 코스: {track.name}")
     else:
-        print("학습 전 모델입니다. train_imitation.py 를 먼저 돌리세요.")
+        env = F1TenthEnv(n_beams=args.beams)
+
+    driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range,
+                       dt=env.dt)
+    trained = Path(args.model).exists()
+    if trained:
+        driver.load(args.model)
+        print(f"모델: {args.model}")
+    else:
+        print(f"{args.model} 이 없습니다. 학습 전 모델로 돕니다.")
+
     seed = 0
     obs, _ = env.reset(seed=seed)
     driver.reset()
-    camera = Camera(env.outer)
+    camera = Camera(np.concatenate([env.seg_a, env.seg_b]))
+    walls = draw_walls(camera, env.seg_a, env.seg_b)
+    teacher = None
+    speed_mult = 1
 
     channels = sensor_channels()
     prox_idx, loom_idx = field_order(channels, N_SECTORS)
@@ -155,23 +195,44 @@ def main():
                     mode = "fly"
                 elif event.key == pygame.K_g:
                     mode = "gap"
+                elif event.key == pygame.K_t and not args.map:
+                    mode = "teacher"
+                    obs, _ = env.reset(seed=seed)
+                    teacher = StanleyRacer.for_env(env)
+                    obs = env._observe(env._scan())
+                    driver.reset()
+                    total = 0.0
+                elif event.key in (pygame.K_PLUS, pygame.K_EQUALS):
+                    speed_mult = min(8, speed_mult * 2)
+                elif event.key == pygame.K_MINUS:
+                    speed_mult = max(1, speed_mult // 2)
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                 elif event.key == pygame.K_r:
-                    seed += 1
+                    if not args.map:
+                        seed += 1
                     obs, _ = env.reset(seed=seed)
                     driver.reset()
-                    camera = Camera(env.outer)
+                    teacher = None
+                    if mode == "teacher":
+                        teacher = StanleyRacer.for_env(env)
+                        obs = env._observe(env._scan())
+                    camera = Camera(np.concatenate([env.seg_a, env.seg_b]))
+                    walls = draw_walls(camera, env.seg_a, env.seg_b)
                     total = 0.0
 
-        if not paused:
+        for _ in range(0 if paused else speed_mult):
             scan = obs[:-1] * env.lidar_range
             if mode == "fly":
                 # act() 안에서 이미 변환했다. 또 부르면 접근율이 0이 된다.
                 action = driver.act(obs)
                 features = driver.last_features
             else:
-                action = follow_the_gap(scan, env.beam_angles, env.lidar_range)
+                if mode == "teacher" and teacher is not None:
+                    action = teacher.act(env.pos, env.yaw, env.speed)
+                else:
+                    action = follow_the_gap(scan, env.beam_angles,
+                                            env.lidar_range)
                 features = driver.encoder.encode(scan, obs[-1], env.dt)
             obs, reward, done, truncated, info = env.step(action)
             total += reward
@@ -179,12 +240,18 @@ def main():
             if done or truncated:
                 obs, _ = env.reset(seed=seed)
                 driver.reset()
+                if mode == "teacher":
+                    teacher = StanleyRacer.for_env(env)
+                    obs = env._observe(env._scan())
                 total = 0.0
+                break
 
         screen.fill(BG)
-
-        for wall in (env.inner, env.outer):
-            draw_loop(screen, camera, wall)
+        screen.blit(walls, (0, 0))
+        if mode == "teacher" and teacher is not None:
+            loop = camera(np.vstack([teacher.line, teacher.line[:1]]))
+            pygame.draw.lines(screen, (120, 200, 255), False,
+                              [tuple(p) for p in loop], 2)
 
         scan = obs[:-1] * env.lidar_range
         angles = env.beam_angles + env.yaw
@@ -205,8 +272,10 @@ def main():
         pygame.draw.line(screen, CAR, tuple(body[0]), tuple(body[1]), thickness)
         pygame.draw.circle(screen, (240, 120, 90), origin, 4)
 
-        state = "학습됨" if trained else "학습전"
-        label = f"초파리 회로 ({state})" if mode == "fly" else "Follow the Gap"
+        state = Path(args.model).stem if trained else "학습전"
+        label = {"fly": f"초파리 회로 ({state})",
+                 "gap": "고전 Follow the Gap",
+                 "teacher": "교사 (레이싱 라인)"}[mode]
         rows = [
             ("진행도", f"{info['progress']:.1%}"),
             ("최고", f"{best:.1%}"),
@@ -240,7 +309,8 @@ def main():
         y = draw_field(screen, font, PANEL_X, y, "접근율", features[loom_idx])
         draw_bar(screen, font, PANEL_X, y + 16, "속도 입력", features[speed_idx] / 3.0)
 
-        hint = "F 초파리   G 고전   R 새 트랙   SPACE 정지   ESC 종료"
+        hint = (f"F 초파리  G 고전  T 교사  R 새트랙  +/- 배속({speed_mult}x)"
+                "  SPACE 정지  ESC 종료")
         screen.blit(font.render(hint, True, DIM), (16, HEIGHT - 26))
 
         pygame.display.flip()
