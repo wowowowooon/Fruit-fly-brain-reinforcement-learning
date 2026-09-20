@@ -38,11 +38,9 @@ class RacingPolicy(nn.Module):
         return states[..., : self.n_output], hidden
 
     def act_from(self, motor):
-        drive = motor[..., : self.fly.n_drive]
-        steering = motor[..., self.fly.n_drive:]
-        return torch.tanh(torch.cat(
-            [self.fly.steer_head(steering), self.fly.speed_head(drive)], dim=-1
-        ))
+        # 변환은 컨트롤러가 갖고 있다. 여기 따로 적으면 한쪽만 고쳤을 때
+        # 조용히 어긋난다 (조향을 좌우 차이로 바꾸면서 실제로 겪었다).
+        return self.fly.command(motor)
 
     def forward(self, x, hidden):
         """x: (B, 1, C) 한 스텝. 평균 행동, 가치, 다음 상태를 돌려준다."""

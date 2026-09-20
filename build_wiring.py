@@ -259,14 +259,21 @@ class FlyController(nn.Module):
         self.steer_gain = nn.Parameter(torch.ones(1))
         self.steer_bias = nn.Parameter(torch.zeros(1))
 
-    def forward(self, x, hidden=None):
-        states, hidden = self.rnn(x, hidden)
-        motor = states[..., : self.n_output]
-        drive, steering = motor[..., : self.n_drive], motor[..., self.n_drive:]
+    def command(self, motor):
+        """운동 뉴런 상태를 조향·속도 명령으로.
+
+        강화학습 쪽에서도 같은 변환이 필요하다. 양쪽에 따로 적어 두면
+        한쪽만 고쳤을 때 조용히 어긋난다. 여기 한 곳만 둔다.
+        """
+        drive = motor[..., : self.n_drive]
+        steering = motor[..., self.n_drive:]
         # 왼쪽이 세면 한쪽으로, 오른쪽이 세면 반대로
         turn = (steering * self.steer_sign).mean(-1, keepdim=True)
-        command = torch.tanh(torch.cat(
+        return torch.tanh(torch.cat(
             [self.steer_gain * turn + self.steer_bias, self.speed_head(drive)],
             dim=-1,
         ))
-        return command, hidden
+
+    def forward(self, x, hidden=None):
+        states, hidden = self.rnn(x, hidden)
+        return self.command(states[..., : self.n_output]), hidden
