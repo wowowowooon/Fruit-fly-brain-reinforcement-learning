@@ -15,7 +15,8 @@ FGM 과 다른 점이 핵심이다. FGM 은 그때그때 뚫린 쪽으로 가므
 import numpy as np
 
 from f1tenth_sim import (
-    CAR_WIDTH, FRONT_OVERHANG, MAX_SPEED, MAX_STEER, WHEELBASE, _resample,
+    CAR_WIDTH, FRONT_OVERHANG, LAT_ACCEL_MAX, MAX_ACCEL, MAX_BRAKE,
+    MAX_SPEED, MAX_STEER, WHEELBASE, _resample,
 )
 
 # --- Stanley (팀 실차 파라미터) ---
@@ -27,9 +28,12 @@ FEEDFORWARD_LEAD = 0.12    # 몇 초 앞의 곡률을 미리 반영할지 [s]
 CURVE_SMOOTH = 11          # 곡률을 이 개수만큼 평균 내어 잔떨림을 없앤다
 
 # --- 속도 프로파일 (팀 speed_profile.py) ---
-LAT_ACCEL = 6.0            # 코너에서 버티는 횡가속도 [m/s^2]
-BRAKE_ACCEL = 4.0          # 감속 한계 [m/s^2]
-DRIVE_ACCEL = 7.0          # 가속 한계 [m/s^2]
+# 시뮬의 타이어 한계와 같은 값을 쓴다. 교사가 시뮬보다 과감하게 계획하면
+# 자기가 세운 계획을 자기가 못 따라가서 코너마다 밀려난다.
+# 노면이 나쁜 경우(마찰 0.75배)에도 성립하도록 그쪽에 맞춘다.
+LAT_ACCEL = LAT_ACCEL_MAX * 0.75   # 코너에서 버티는 횡가속도 [m/s^2]
+BRAKE_ACCEL = MAX_BRAKE            # 감속 한계 [m/s^2]
+DRIVE_ACCEL = MAX_ACCEL            # 가속 한계 [m/s^2]
 SPEED_MIN = 1.5            # 하한 [m/s]
 SAFETY = 0.65              # 실차 첫 주행 때는 0.6~0.7 로 낮춘다
 WIDTH_SPEED_GAIN = 3.5     # 옆 공간 1m 당 허용 속도 [m/s]. 낮출수록 안전
@@ -187,6 +191,48 @@ def _enforce_clearance(line, seg_a, seg_b, keep, passes=40):
     return line
 
 
+def _sharpest(path):
+    """이 경로에서 가장 급한 코너의 회전반경. 작을수록 급하다."""
+    d1 = (np.roll(path, -1, axis=0) - np.roll(path, 1, axis=0)) / 2
+    d2 = np.roll(path, -1, axis=0) - 2 * path + np.roll(path, 1, axis=0)
+    cross = np.abs(d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0])
+    step = np.linalg.norm(d1, axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        radius = np.where(cross > 1e-12, step ** 3 / cross, np.inf)
+    return float(np.min(radius))
+
+
+def _worst_shortfall(path, seg_a, seg_b, clearance):
+    """벽 여유가 가장 모자란 정도. 양수면 모든 점이 안전하다."""
+    need = outer_half_width(1.0 / np.maximum(
+        np.abs(path_curvature(path, CURVE_SMOOTH)), 1e-6)) + clearance
+    _, gap = _closest_on_walls(path, seg_a, seg_b)
+    return float(np.min(gap - need))
+
+
+def _no_worse_than_center(line, center, seg_a, seg_b, clearance):
+    """최적화 결과가 중심선보다 급해졌으면 중심선 쪽으로 되돌린다.
+
+    벽 여유를 점마다 따로 밀어내다 보면 라인에 뾰족한 꺾임이 생긴다.
+    그러면 '최소곡률' 최적화가 중심선보다 더 급한 라인을 내놓는다.
+    중심선 1.2m 짜리 트랙에서 라인이 0.42m 까지 꺾이는 것을 확인했다.
+    그 라인은 차체가 코너 바깥을 크게 쓸어서 그대로 벽에 닿는다.
+
+    최적화가 실패한 경우에는 적어도 중심선만큼은 보장되어야 한다.
+    """
+    best, target = line, _sharpest(center)
+    if _sharpest(line) >= target and _worst_shortfall(
+            line, seg_a, seg_b, clearance) >= 0:
+        return line
+    for weight in (0.25, 0.5, 0.75, 1.0):
+        blend = (1.0 - weight) * line + weight * center
+        if (_sharpest(blend) >= target * 0.95
+                and _worst_shortfall(blend, seg_a, seg_b, clearance) >= 0):
+            return blend
+        best = blend
+    return best
+
+
 def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None,
                            clearance=WALL_CLEARANCE):
     """곡률 제곱합이 최소가 되는 주행선.
@@ -244,6 +290,12 @@ def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None,
             1.0 / np.maximum(np.abs(path_curvature(line, CURVE_SMOOTH)), 1e-6)
         ) + clearance * (1.0 - 0.35 * round_no / 7)
         line = _enforce_clearance(line, seg_a, seg_b, need, passes=25)
+
+    # 최적화가 중심선보다 나쁜 라인을 내놓는 경우가 있다. 그럴 때는
+    # 중심선 쪽으로 되돌려서 최소한 중심선만큼은 되게 한다.
+    guide = _resample(np.asarray(center, dtype=float), count)
+    line = _no_worse_than_center(_resample(line, count), guide,
+                                 seg_a, seg_b, clearance)
     return _resample(line, count)
 
 

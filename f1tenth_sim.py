@@ -23,13 +23,32 @@ CAR_WIDTH = 0.30        # 전폭 [m] (반폭 0.15)
 REAR_OVERHANG = 0.10    # base_link 뒤로 튀어나온 길이 [m]
 FRONT_OVERHANG = 0.50   # base_link 앞으로 튀어나온 길이 [m]
 CAR_LENGTH = FRONT_OVERHANG + REAR_OVERHANG    # 0.60 m
-MAX_STEER = 0.3735      # 최대 조향각 [rad] (21.4도). local_planner_node 실제값
+MAX_STEER = np.deg2rad(40.0)   # 최대 조향각. 좌우 40도씩 (실차 실측)
 MAX_SPEED = 7.0         # 목표 최고 속도 [m/s]. 보수적으로 잡았다
-MAX_ACCEL = 4.0         # 속도 변화율 한계 [m/s^2]
+MAX_ACCEL = 4.0         # 가속 한계 [m/s^2]
+MAX_BRAKE = 6.0         # 감속 한계 [m/s^2]. 브레이크가 가속보다 세다
 
-# 자이로가 읽을 수 있는 최대 각속도. 자전거 모델에서 최고속 + 최대조향일 때다.
-#   yaw_rate = v / L * tan(steer) = 7.0 / 0.33 * tan(0.3735)
-YAW_RATE_MAX = MAX_SPEED / WHEELBASE * np.tan(MAX_STEER)
+# --- 타이어가 버티는 한계 ---
+# 조향각만으로는 얼마나 도는지가 정해지지 않는다. 바퀴를 아무리 꺾어도
+# 타이어가 못 버티면 차는 그냥 바깥으로 밀려난다(언더스티어).
+#
+# 이걸 안 넣으면 시뮬에서만 가능한 주행을 배운다. 40도까지 꺾을 수 있으면
+# 최소 회전반경이 0.39m 이고, 7m/s 로 돌면 횡가속이 125 m/s^2 (12.7G) 다.
+# 실차는 그 자리에서 미끄러진다. 배운 대로 하면 실차에서 코너마다 나간다.
+#
+# f1tenth_gym 기본 노면 마찰 mu = 1.0489 (실차 동정으로 얻은 값).
+TIRE_FRICTION = 1.0489
+GRAVITY = 9.81
+LAT_ACCEL_MAX = TIRE_FRICTION * GRAVITY        # 10.3 m/s^2
+# 노면은 매번 다르다. 대회장 바닥이 미끄러울 수도 있다.
+FRICTION_RANGE = (0.75, 1.15)
+
+# 서보도 즉시 안 꺾인다. f1tenth_gym 의 조향 속도 한계.
+STEER_RATE_MAX = 3.2    # [rad/s]. 40도를 꺾는 데 0.22초
+
+# 자이로가 읽을 수 있는 최대 각속도. 타이어 한계에 걸리므로
+# 조향각이 아니라 마찰로 정해진다.  yaw_rate = a_lat / v
+YAW_RATE_MAX = LAT_ACCEL_MAX / 2.0
 
 # 차체가 뒷축 기준으로 차지하는 앞뒤 범위. 충돌 판정에 쓴다.
 BODY_BACK = -REAR_OVERHANG
@@ -561,8 +580,13 @@ class F1TenthEnv(gym.Env):
         self.pos = start.copy()
         self.yaw = float(np.arctan2(heading[1], heading[0]))
         self.speed = 2.0
+        self.steer = 0.0
         self.yaw_rate = 0.0
         self.accel = 0.0
+        # 노면은 매번 다르다. 미끄러운 바닥에서도 달릴 수 있어야 한다.
+        low, high = FRICTION_RANGE
+        self.lat_accel_max = LAT_ACCEL_MAX * float(
+            self.np_random.uniform(low, high))
         self.steps = 0
         self.lap_progress = 0
         self.prev_index = 0
@@ -583,17 +607,29 @@ class F1TenthEnv(gym.Env):
             self.queued.append(action)
             action = self.queued.popleft()
 
-        steer = float(np.clip(action[0], -1, 1)) * MAX_STEER
+        want_steer = float(np.clip(action[0], -1, 1)) * MAX_STEER
         target = (float(np.clip(action[1], -1, 1)) + 1) / 2 * MAX_SPEED
 
-        # 속도는 즉시 바뀌지 않는다
-        limit = MAX_ACCEL * self.dt
-        change = float(np.clip(target - self.speed, -limit, limit))
+        # 서보가 따라오는 속도에 한계가 있다. 한 번에 확 꺾이지 않는다.
+        slew = STEER_RATE_MAX * self.dt
+        steer = self.steer + np.clip(want_steer - self.steer, -slew, slew)
+        self.steer = float(steer)
+
+        # 속도도 즉시 바뀌지 않는다. 브레이크가 가속보다 세다.
+        change = float(np.clip(target - self.speed,
+                               -MAX_BRAKE * self.dt, MAX_ACCEL * self.dt))
         self.speed += change
         self.accel = change / self.dt          # IMU 가속도계가 재는 값
 
-        # 자전거 모델 (뒷축 기준)
-        self.yaw_rate = self.speed / WHEELBASE * np.tan(steer)  # 자이로
+        # 자전거 모델 (뒷축 기준). 바퀴가 시키는 회전율.
+        turn = self.speed / WHEELBASE * np.tan(self.steer)
+
+        # 타이어가 버티는 만큼만 실제로 돈다. 넘치면 바깥으로 밀린다.
+        if self.speed > 0.1:
+            grip = self.lat_accel_max / self.speed
+            turn = float(np.clip(turn, -grip, grip))
+        self.yaw_rate = turn                   # 자이로가 재는 값
+
         self.pos = self.pos + self.speed * self.dt * self._heading()
         self.yaw += self.yaw_rate * self.dt
         self.steps += 1

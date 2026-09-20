@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from controllers import follow_the_gap
+from fly_driver import N_MOTION
 from f1tenth_sim import BODY_RADIUS
 from track_map import MapEnv, MapTrack
 
@@ -115,7 +116,7 @@ def main():
         "고전 (Follow the Gap)")
 
     if Path(args.model).exists():
-        from fly_driver import N_MOTION, FlyDriver
+        from fly_driver import FlyDriver
         driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range,
                            dt=env.dt).load(args.model)
         run(env, driver, "초파리 배선")

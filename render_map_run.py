@@ -12,6 +12,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from controllers import follow_the_gap
+from fly_driver import N_MOTION
 from f1tenth_sim import BODY_RADIUS
 from test_on_map import find_start, trace_lap
 from paths import OUTPUTS
@@ -53,7 +54,7 @@ def main():
 
     from pathlib import Path
     if Path(args.model).exists():
-        from fly_driver import N_MOTION, FlyDriver
+        from fly_driver import FlyDriver
         driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range,
                            dt=env.dt).load(args.model)
         runs.append(("초파리 배선", *drive(env, driver)))
