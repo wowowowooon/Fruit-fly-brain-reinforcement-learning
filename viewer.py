@@ -145,12 +145,12 @@ def main():
     clock = pygame.time.Clock()
 
     if args.map:
-        from test_on_map import find_start, trace_lap
+        from test_on_map import find_start
         from track_map import MapEnv, MapTrack
         track = MapTrack(args.map)
         env = MapEnv(track, n_beams=args.beams)
         env.start_pose = find_start(track, env)
-            print(f"실제 코스: {track.name}")
+        print(f"실제 코스: {track.name}")
     else:
         env = F1TenthEnv(n_beams=args.beams)
 
