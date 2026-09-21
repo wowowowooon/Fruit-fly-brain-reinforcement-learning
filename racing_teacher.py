@@ -54,6 +54,8 @@ CORRIDOR_CLEARANCE = 0.24
 LATERAL_STEPS = 31           # 좌우를 몇 칸으로 쪼개 볼지. 홀수여야 가운데가 생긴다
 CORRIDOR_ROUNDS = 2          # 폐곡선이라 두 바퀴 돌려야 시작과 끝이 맞는다
 BLOCK_PENALTY = 1e6          # 막힌 칸을 밟을 때의 벌점
+# 기준선을 갈아 가며 몇 번 다시 풀지. 1이면 예전처럼 한 번만 푼다.
+CORRIDOR_PASSES = 1
 
 # ---- 속도 ---------------------------------------------------------------
 # 곧은 구간에서는 통로 폭이 속도를 묶지 않는다. 코너에서만 묶는다.
@@ -243,52 +245,77 @@ def speed_plan(points, room=None, v_max=MAX_SPEED):
 
 
 def racing_line(center, seg_a, seg_b, half_width, points=None, rounds=3,
-                clearance=CORRIDOR_CLEARANCE):
+                clearance=None, passes=None):
     """장애물을 비켜 가면서 곡률이 가장 작은 주행선.
 
-    중심선을 기준선으로 고정하고 '옆으로 얼마나 치우칠지' 하나만 푼다.
-    통로 밖으로는 못 나가게 상자 제약을 걸어 두었으므로, 최적화가 아무리
-    날뛰어도 장애물을 뚫지 않는다. 예전 교사는 기준선을 매 바퀴 갱신해서
-    제약이 헐거워졌고, 그래서 라인이 장애물 위로 올라갔다.
+    기준선 위에서 '옆으로 얼마나 치우칠지' 하나만 푼다. 통로 밖으로는 못
+    나가게 상자 제약을 걸어 두어, 최적화가 아무리 날뛰어도 장애물을 뚫지 않는다.
+
+    곡률은 치우침에 대해 비선형인데 QP 는 1차로 근사한다. 코너가 급할수록
+    그 근사가 틀리므로, 푼 결과를 새 기준선으로 삼아 법선·통로·곡률을 전부
+    다시 재고 또 푼다 (TUM mincurv_iqp 와 같은 구조).
+
+    주의: 기준선만 갈고 통로를 다시 안 재면 제약이 헐거워져 라인이 장애물
+    위로 올라간다. 예전 교사가 정확히 그렇게 망가졌다. 여기서는 패스마다
+    자유 통로를 처음부터 다시 잡는다.
     """
-    center = _resample(np.asarray(center, dtype=float), points or len(center))
-    count = len(center)
-    normal = _normals(center)
-    offsets = _lateral_offsets(half_width)
-
-    field = _free_gap(center, normal, seg_a, seg_b, offsets)
-    mask = _free_mask(field, HALF_WIDTH + clearance)
-    chosen = _corridor_offsets(center, normal, mask, offsets)
-    low, high = _corridor_bounds(mask, chosen, offsets)
-    # 통로 반폭은 실제로 잰 여유로 쓴다. 요구를 못 채운 지점도 있으므로
-    # 요구값을 그대로 쓰면 속도 계획이 실제보다 넉넉하다고 착각한다.
-    room = np.minimum((high - low) / 2.0 + HALF_WIDTH + clearance,
-                      field[np.arange(count), chosen])
-
+    # 기본값을 인자 자리에 쓰면 정의 시점에 고정되어, 모듈 상수를 바꿔도
+    # 안 먹는다. 부를 때 읽는다.
+    if clearance is None:
+        clearance = CORRIDOR_CLEARANCE
+    if passes is None:
+        passes = CORRIDOR_PASSES
+    base = _resample(np.asarray(center, dtype=float), points or len(center))
+    count = len(base)
     d2 = _second_difference(count)
-    base = d2 @ center
-    mx = d2 * normal[:, 0]
-    my = d2 * normal[:, 1]
-    gram = mx.T @ mx + my.T @ my
-    bias = mx.T @ base[:, 0] + my.T @ base[:, 1]
+    offsets = _lateral_offsets(half_width)
+    need = HALF_WIDTH + clearance
+    low = high = room = None
+    alpha = np.zeros(count)
 
-    line = center + offsets[chosen][:, None] * normal
-    for _ in range(rounds):
-        # 코너가 급할수록 차체가 바깥을 더 쓴다. 그만큼 통로를 좁혀 둔다.
-        radius = 1.0 / np.maximum(np.abs(path_curvature(line, CURVE_SMOOTH)), 1e-6)
-        extra = np.maximum(outer_half_width(radius) - HALF_WIDTH, 0.0)
-        lo, hi = low + extra, high - extra
-        # 좁혔더니 뒤집히는 곳은 통로 한가운데로 못박는다.
-        # 여기서 0(중심선)을 끼워 넣으면 안 된다. 장애물이 중심선을 덮고
-        # 있는 자리에서는 0 이 곧 장애물 속이라, 최적화가 도로 뚫고 간다.
-        middle = (low + high) / 2.0
-        pinched = lo > hi
-        lo = np.where(pinched, middle, lo)
-        hi = np.where(pinched, middle, hi)
-        alpha = _solve_box(gram, bias, lo, hi)
-        line = center + alpha[:, None] * normal
-    return Corridor(center=center, normal=normal, low=low, high=high,
-                    offset=alpha, line=line, room=room)
+    for turn in range(max(1, passes)):
+        normal = _normals(base)
+        field = _free_gap(base, normal, seg_a, seg_b, offsets)
+        mask = _free_mask(field, need)
+        chosen = _corridor_offsets(base, normal, mask, offsets)
+        low, high = _corridor_bounds(mask, chosen, offsets)
+        # 통로 반폭은 실제로 잰 여유로 쓴다. 요구를 못 채운 지점도 있으므로
+        # 요구값을 그대로 쓰면 속도 계획이 실제보다 넉넉하다고 착각한다.
+        room = np.minimum((high - low) / 2.0 + need,
+                          field[np.arange(count), chosen])
+
+        anchor = d2 @ base
+        mx = d2 * normal[:, 0]
+        my = d2 * normal[:, 1]
+        gram = mx.T @ mx + my.T @ my
+        bias = mx.T @ anchor[:, 0] + my.T @ anchor[:, 1]
+
+        line = base + offsets[chosen][:, None] * normal
+        for _ in range(rounds):
+            # 코너가 급할수록 차체가 바깥을 더 쓴다. 그만큼 통로를 좁혀 둔다.
+            radius = 1.0 / np.maximum(
+                np.abs(path_curvature(line, CURVE_SMOOTH)), 1e-6)
+            extra = np.maximum(outer_half_width(radius) - HALF_WIDTH, 0.0)
+            lo, hi = low + extra, high - extra
+            # 좁혔더니 뒤집히는 곳은 통로 한가운데로 못박는다.
+            # 여기서 0(기준선)을 끼워 넣으면 안 된다. 장애물이 기준선을 덮고
+            # 있는 자리에서는 0 이 곧 장애물 속이라, 최적화가 도로 뚫고 간다.
+            middle = (low + high) / 2.0
+            pinched = lo > hi
+            lo = np.where(pinched, middle, lo)
+            hi = np.where(pinched, middle, hi)
+            alpha = _solve_box(gram, bias, lo, hi)
+            line = base + alpha[:, None] * normal
+
+        if turn + 1 < passes:
+            # 다음 패스는 이 라인을 기준선으로 삼는다. 선형화가 믿을 만한
+            # 범위 안에서만 옮기도록 초기 패스에서는 조금씩만 간다.
+            step = (turn + 1) / passes
+            base = _resample(base + (step * alpha)[:, None] * normal, count)
+
+    return Corridor(center=base, normal=_normals(base), low=low, high=high,
+                    offset=alpha, line=base + alpha[:, None] * _normals(base),
+                    room=room)
 
 
 # ---- 교사 ---------------------------------------------------------------
@@ -319,7 +346,7 @@ class RacingTeacher:
     name = "교사 (레이싱 라인 + 회피)"
 
     def __init__(self, center, seg_a, seg_b, half_width, v_max=MAX_SPEED,
-                 points=None, clearance=CORRIDOR_CLEARANCE):
+                 points=None, clearance=None):
         self.plan = racing_line(center, seg_a, seg_b, half_width,
                                 points=points, clearance=clearance)
         self.line = self.plan.line
@@ -337,7 +364,7 @@ class RacingTeacher:
 
     @classmethod
     def for_env(cls, env, v_max=MAX_SPEED, place=True, points=None,
-                clearance=CORRIDOR_CLEARANCE):
+                clearance=None):
         racer = cls(env.center, env.seg_a, env.seg_b, env.track_width / 2,
                     v_max, points=points, clearance=clearance)
         if place:

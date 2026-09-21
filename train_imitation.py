@@ -29,7 +29,12 @@ from raceline import StanleyRacer
 from racing_teacher import RacingTeacher
 
 SEQ_LEN = 64          # RNN에 한 번에 넣는 시간 길이 (40Hz에서 1.6초)
-NOISE = 0.25          # 교사 행동에 섞는 흔들림
+# 교사 행동에 섞는 흔들림. 학생이 교사가 안 가는 자리도 겪게 하려는 것이다.
+# 0.25 는 조향 난수가 10도나 되어 교사 자신이 45개 중 6개에서 벽으로 나간다.
+# 시드 700~744 에서 재 보고 골랐다 (쓸 수 있는 주행 시간 기준):
+#   0.25 -> 교사 39/45, 747초   0.15 -> 44/45, 888초
+#   0.10 -> 45/45, 880초        0.05 -> 45/45, 869초
+NOISE = 0.15
 EPISODE_STEPS = 2600  # 40Hz에서 65초. 트랙당 여러 바퀴를 돈다
 COLLECT_LAPS = 2      # 한 트랙에서 도는 바퀴 수. 레이싱 라인 계산이 비싸서
                       # 같은 트랙을 더 활용하는 편이 싸게 먹힌다
@@ -173,6 +178,57 @@ def load_episodes(path, recipe):
             for a, b in zip(edges[:-1], edges[1:])]
 
 
+def dagger(driver, args, rng, tracks, start, log=print):
+    """학생을 직접 달리게 하고, 그 자리에서 교사가 뭐라 할지를 정답으로 적는다.
+
+    흔들림을 섞는 방식은 '교사가 안 가는 자리' 를 무작위로 훑는 것이라,
+    학생이 실제로 가는 자리와는 다르다. 학생이 조금 어긋난 채로 코너에
+    들어가면 교사는 그런 자리에 가 본 적이 없어서 시범이 없다. 그래서
+    학생을 운전대에 앉히고 교사는 옆에서 '나라면 이렇게 한다' 만 적는다.
+
+    Ross et al., DAgger (2011). 강화학습이 어차피 학생 분포에서 도는데도
+    이걸 먼저 하는 이유는, 출발점이 좋을수록 강화학습이 덜 헤매기 때문이다.
+    """
+    env = make_env(args, laps=COLLECT_LAPS)
+    encoder = LidarEncoder(args.beams, lidar_range=args.lidar_range)
+    episodes = []
+    bar = Progress(tracks, "DAgger", log)
+    crashed_n = 0
+
+    for index in range(tracks):
+        track = start + index
+        obs, _ = env.reset(seed=track)
+        racer = make_teacher(args, env)      # 교사가 차를 라인 위에 올린다
+        obs = env._observe(env._scan())
+        encoder.reset()
+        driver.reset()
+        features, labels = [], []
+        info = {"crashed": False}
+
+        for _ in range(EPISODE_STEPS):
+            scan = obs[:-N_MOTION] * env.lidar_range
+            features.append(encoder.raw(scan, obs[-N_MOTION:], env.dt))
+            labels.append((racer.act(env.pos, env.yaw, env.speed,
+                                     env.rival_states(), env.dt)
+                           if hasattr(env, "rival_states")
+                           else racer.act(env.pos, env.yaw, env.speed)).copy())
+            obs, _, done, truncated, info = env.step(driver.act(obs))
+            if done or truncated:
+                break
+
+        if info["crashed"]:
+            crashed_n += 1
+            cut = max(0, len(features) - 80)   # 충돌 직전 2초는 버린다
+            features, labels = features[:cut], labels[:cut]
+        if len(features) >= SEQ_LEN:
+            episodes.append((np.array(features, dtype=np.float32),
+                             np.array(labels, dtype=np.float32)))
+        bar.step(index + 1,
+                 f"{sum(len(f) for f, _ in episodes):>6}스텝  학생충돌 {crashed_n}")
+    bar.done()
+    return episodes
+
+
 def to_batches(episodes, batch_size, rng):
     """에피소드를 고정 길이 토막으로 잘라 섞는다."""
     chunks = []
@@ -227,6 +283,10 @@ def main():
                         help="앞서 달리는 상대 차 수. 0이면 정지 장애물만")
     parser.add_argument("--passage", type=float, default=PASSAGE_MIN,
                         help="장애물 옆에 남길 통로 [m]")
+    parser.add_argument("--dagger", type=int, default=0,
+                        help="학생을 달리게 해서 교사 정답을 붙이는 라운드 수")
+    parser.add_argument("--dagger-tracks", type=int, default=60,
+                        help="DAgger 한 라운드에 쓸 트랙 수")
     parser.add_argument("--cache", type=str, default=None,
                         help="교사 시범을 모아 둘 파일(.npz). 조건이 같으면 "
                              "다음부터 수집을 건너뛴다")
@@ -275,14 +335,35 @@ def main():
     log(driver.summary())
     log("")
 
+    best = run_training(driver, episodes, args, rng, log, -1.0, "학습")
+
+    # DAgger: 학생을 달리게 하고 교사가 정답을 적어 자료를 보탠다.
+    for turn in range(1, args.dagger + 1):
+        log(f"\nDAgger {turn}회차 — 학생이 운전, 교사가 정답을 적는다")
+        extra = dagger(driver, args, rng, args.dagger_tracks,
+                       args.tracks + (turn - 1) * args.dagger_tracks, log)
+        # 정규화는 처음 것을 그대로 쓴다. 바꾸면 이미 배운 가중치가 어긋난다.
+        extra = [((f - mean) / np.maximum(std, 1e-3), y) for f, y in extra]
+        episodes = episodes + extra
+        log(f"자료 {len(episodes)}편, 총 "
+            f"{sum(len(f) for f, _ in episodes):,}스텝\n")
+        best = run_training(driver, episodes, args, rng, log, best,
+                            f"학습{turn + 1}")
+
+    log(f"\n최고 진행도 {best:.1%}  -> {args.out} 저장됨")
+    log("다음: 강화학습으로 이 모델을 출발점 삼아 랩타임을 줄인다.")
+    log.close()
+
+
+def run_training(driver, episodes, args, rng, log, best, tag):
+    """한 묶음의 자료로 학습한다. 더 좋아질 때만 저장한다."""
     optimizer = torch.optim.Adam(driver.model.parameters(), lr=args.lr)
     # 뒤로 갈수록 보폭을 줄여서 좋은 지점을 지나치지 않게 한다.
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
     loss_fn = nn.MSELoss()
     eval_seeds = [100, 101, 102, 103, 104]
-    best = -1.0
 
-    bar = Progress(args.epochs, "학습", log)
+    bar = Progress(args.epochs, tag, log)
     for epoch in range(1, args.epochs + 1):
         driver.model.train()
         losses = []
@@ -309,10 +390,7 @@ def main():
                 note += " 저장"
         bar.step(epoch, note)
     bar.done()
-
-    log(f"\n최고 진행도 {best:.1%}  -> {args.out} 저장됨")
-    log("다음: 강화학습으로 이 모델을 출발점 삼아 랩타임을 줄인다.")
-    log.close()
+    return best
 
 
 if __name__ == "__main__":
