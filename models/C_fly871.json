@@ -17,7 +17,7 @@
   "obstacle_completed": 14,
   "clear_tracks": 25,
   "clear_completed": 25,
-  "seconds": 299.71963119506836,
+  "seconds": 328.0227372646332,
   "runs": [
     {
       "seed": 700,
@@ -424,5 +424,11 @@
       "width": 2.2881887293042102,
       "obstacles": 0
     }
-  ]
+  ],
+  "map": {
+    "name": "ifac_roboracer",
+    "done": true,
+    "progress": 1.0,
+    "lap_time": 12.100000000000001
+  }
 }

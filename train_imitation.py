@@ -12,6 +12,7 @@ FGM(그때그때 뚫린 쪽으로 가기)을 교사로 쓰면 트랙 한가운�
 """
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -117,9 +118,24 @@ def collect(args, rng, log=print):
 # 학습할 때마다 그 시간을 통째로 아낀다.
 
 
+def _teacher_fingerprint():
+    """교사 코드의 지문.
+
+    교사를 고쳐 놓고 예전에 모은 자료를 그대로 쓰면, 고친 줄 알면서
+    낡은 시범으로 학습하게 된다. 조용히 틀리는 종류의 사고라 코드 내용을
+    해시에 넣어 자동으로 걸러지게 한다.
+    """
+    here = Path(__file__).resolve().parent
+    blob = b""
+    for name in ("racing_teacher.py", "raceline.py", "moving_obstacles.py"):
+        blob += (here / name).read_bytes()
+    return hashlib.sha256(blob).hexdigest()[:16]
+
+
 def _recipe(args):
     """이 자료가 어떤 조건에서 모은 것인지. 하나라도 다르면 다시 모아야 한다."""
     return {
+        "teacher_code": _teacher_fingerprint(),
         "tracks": int(args.tracks),
         "beams": int(args.beams),
         "lidar_range": float(args.lidar_range),

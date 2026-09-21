@@ -35,6 +35,14 @@ EVAL_TRACKS = 45
 EPISODE_STEPS = 3000
 
 
+def _live_links(driver):
+    """순환 블록에서 실제로 살아 있는 연결 수."""
+    cell = driver.model.rnn.rnn_cell.layer_0
+    mask = cell.sparsity_mask.data
+    units = driver.wiring.units
+    return int((mask[:, mask.shape[1] - units:] != 0).sum())
+
+
 def run_track(driver, seed, beams, lidar_range, passage=PASSAGE_MIN):
     env = F1TenthEnv(n_beams=beams, lidar_range=lidar_range, track_seed=seed,
                      passage=passage)
@@ -131,7 +139,9 @@ def main():
         "wiring": "dense" if args.dense else "fly",
         "passage": float(args.passage),
         "neurons": int(driver.wiring.units),
-        "links": int((np.asarray(driver.wiring.adjacency_matrix) != 0).sum()),
+        # wiring.adjacency_matrix 는 초파리 배선이라 B안(밀집)에서는 틀린 값이
+        # 나온다. 모델이 실제로 쓰는 마스크를 센다.
+        "links": int(_live_links(driver)),
         "params_stored": sum(p.numel() for p in driver.model.parameters()),
         "params_used": driver.effective_params(),
         "tracks": len(rows),

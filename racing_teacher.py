@@ -37,7 +37,8 @@ from typing import NamedTuple
 
 import numpy as np
 
-from f1tenth_sim import CAR_WIDTH, MAX_SPEED, MAX_STEER, WHEELBASE
+from f1tenth_sim import (CAR_WIDTH, CONTROL_LATENCY, MAX_SPEED,
+                         MAX_STEER, WHEELBASE)
 
 from raceline import (BRAKE_ACCEL, CURVE_SMOOTH, DRIVE_ACCEL,
                       FEEDFORWARD_LEAD, HALF_WIDTH, HEADING_BLEND_M,
@@ -59,6 +60,10 @@ BLOCK_PENALTY = 1e6          # 막힌 칸을 밟을 때의 벌점
 # 회전반경이 이보다 크면(= 거의 직선) 폭 제한을 아예 걸지 않는다.
 STRAIGHT_RADIUS = 18.0       # [m]
 CORNER_RADIUS = 3.0          # [m] 이보다 급하면 폭 제한을 그대로 건다
+# 곧은 구간이어도 폭 제한을 이만큼은 남긴다. 0 이면 폭 1.7m 트랙 직선에서도
+# 7 m/s 를 계획하는데, 그 구간 좌우 여유는 0.65m 뿐이고 옆으로 밀렸을 때
+# 라인 복귀에 3.5m 를 달려야 한다. 값은 재서 고른다.
+WIDTH_FLOOR = 0.0
 
 
 def _lateral_offsets(half_width):
@@ -198,7 +203,7 @@ def _width_weight(kappa):
     """
     radius = 1.0 / np.maximum(kappa, 1e-6)
     span = STRAIGHT_RADIUS - CORNER_RADIUS
-    return np.clip((STRAIGHT_RADIUS - radius) / span, 0.0, 1.0)
+    return np.clip((STRAIGHT_RADIUS - radius) / span, WIDTH_FLOOR, 1.0)
 
 
 def _width_cap(room, v_max):
@@ -207,7 +212,13 @@ def _width_cap(room, v_max):
 
 
 def speed_plan(points, room=None, v_max=MAX_SPEED):
-    """코너는 마찰이, 직선은 최고속이 정한다. 폭은 코너에서만 개입한다."""
+    """코너는 마찰이, 직선은 최고속이 정한다. 폭은 코너에서만 개입한다.
+
+    제어 지연은 여기서 빼지 않는다. 스텝마다 빼면 점 간격(0.2~0.5m)에서
+    지연 거리(7m/s x 50ms = 0.35m)를 매번 깎게 되어 제동 거리가 거의
+    0 이 된다. 실제로 그렇게 했더니 랩타임이 18.9 -> 25.0초가 되었다.
+    지연은 계획을 '읽을 때' 앞자리를 보는 것으로 한 번만 반영한다.
+    """
     kappa = np.abs(path_curvature(points, CURVE_SMOOTH))
     limit = np.sqrt(LAT_ACCEL * SAFETY / np.maximum(kappa, 1e-6))
     if room is not None:
@@ -281,6 +292,14 @@ def racing_line(center, seg_a, seg_b, half_width, points=None, rounds=3,
 
 
 # ---- 교사 ---------------------------------------------------------------
+# 옆으로 밀렸을 때 얼마나 세게 되돌아올지.
+#   보정각 = arctan(K x 오차 / (DAMP x 속도 + SOFT))
+# DAMP=1 이면 속도가 오를수록 보정각이 그만큼 약해진다. 실측: 옆으로 0.20m
+# 밀렸을 때 복귀에 걸리는 시간이 속도와 무관하게 0.5~0.6초라, 7 m/s 에서는
+# 3.5m 를 달려야 돌아온다. 폭 1.7m 트랙의 좌우 여유는 0.65m 뿐이다.
+# DAMP 를 낮추면 고속에서도 보정각이 유지된다. 값은 재서 고른다.
+STANLEY_DAMP = 1.0
+
 RIVAL_HALF_WIDTH = CAR_WIDTH / 2     # 상대 차 반폭 [m]
 RIVAL_MARGIN = 0.16                  # 상대 차 옆을 지날 때 띄울 거리 [m]
 LOOKAHEAD_TIME = 1.8                 # 몇 초 앞까지 상대 차를 내다볼지 [s]
@@ -402,7 +421,12 @@ class RacingTeacher:
         """뒷축 위치와 방향, 현재 속도를 받아 [조향, 속도] 를 -1~1 로."""
         front = pos + WHEELBASE * np.array([np.cos(yaw), np.sin(yaw)])
         near = int(np.argmin(np.linalg.norm(self.line - front, axis=1)))
-        target = float(self.speed[near])
+        # 지금 내는 명령은 지연 뒤에 먹는다. 그때 도착할 자리의 계획을 낸다.
+        # 이렇게 해야 코너 진입에서 딱 맞게 감속한다.
+        soon_v = int((near + max(1, int(speed * CONTROL_LATENCY
+                                        / max(self.spacing, 1e-6))))
+                     % len(self.line))
+        target = float(min(self.speed[near], self.speed[soon_v]))
 
         threat = self._threat(rivals, near, speed) if len(rivals) else None
         if threat is None:
@@ -425,20 +449,33 @@ class RacingTeacher:
                               float(self.plan.high[near]) - here))
         aim = self.line[near] + shift * self.plan.normal[near]
         path_yaw = self.heading[near]
-        heading_error = (path_yaw - yaw + np.pi) % (2 * np.pi) - np.pi
         offset = front - aim
         cte = offset[0] * np.sin(path_yaw) - offset[1] * np.cos(path_yaw)
 
-        cte_term = np.arctan2(STANLEY_K * cte, abs(speed) + STANLEY_SOFTENING)
+        # 코너를 돌려면 원래 이만큼은 꺾어야 한다. 미리 꺾어 두지 않으면 늦는다.
+        lead = int(max(1.0, speed * FEEDFORWARD_LEAD) / max(self.spacing, 1e-6))
+        soon = (near + lead) % len(self.line)
+        ahead = float(self.feedforward[soon])
+
+        # 자전거 모델에서 앞축이 라인 위에 얹혀 있으면, 차체는 경로 접선보다
+        # 조향각만큼 이미 뒤틀려 있는 것이 정상이다. 그 정상분을 빼야 '진짜
+        # 방향 오차' 가 남는다. 안 빼면 코너에서 방향오차와 피드포워드가
+        # 사실상 같은 값이라(상관 0.85) 필요한 양의 두 배를 꺾게 되고,
+        # Stanley 항이 그걸 상쇄하는 자리에서 균형을 잡는다. 그래서 차가
+        # 라인보다 0.17m 안쪽으로 파고든다 (급코너 98%).
+        # feedforward 가 곧 arctan(축거 x 곡률) 이므로 지금 자리 값을 그대로 쓴다
+        lag = float(self.feedforward[near])
+        heading_error = (path_yaw - yaw + np.pi) % (2 * np.pi) - np.pi - lag
+
+        cte_term = np.arctan2(
+            STANLEY_K * cte, STANLEY_DAMP * abs(speed) + STANLEY_SOFTENING)
         raw_heading = HEADING_GAIN * heading_error
         if raw_heading * cte_term > 0.0:
             weight = 1.0                       # 둘 다 안쪽으로 민다
         else:
             weight = max(0.0, 1.0 - abs(cte) / HEADING_BLEND_M)
 
-        lead = int(max(1.0, speed * FEEDFORWARD_LEAD) / max(self.spacing, 1e-6))
-        soon = (near + lead) % len(self.line)
-        steer = self.feedforward[soon] + cte_term + weight * raw_heading
+        steer = ahead + cte_term + weight * raw_heading
 
         return np.array([
             float(np.clip(steer / MAX_STEER, -1.0, 1.0)),
