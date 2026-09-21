@@ -12,6 +12,8 @@ FGM(그때그때 뚫린 쪽으로 가기)을 교사로 쓰면 트랙 한가운�
 """
 
 import argparse
+import json
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -108,6 +110,51 @@ def collect(args, rng, log=print):
     return episodes
 
 
+# ---- 모은 자료를 파일로 두기 -------------------------------------------
+# 레이싱 라인을 푸는 데 트랙당 1.6초가 걸린다. 트랙 260개면 그것만 7분이고
+# 시범 주행까지 하면 훨씬 길다. 한 번 모아 두면 계수를 바꿔 가며 다시
+# 학습할 때마다 그 시간을 통째로 아낀다.
+
+
+def _recipe(args):
+    """이 자료가 어떤 조건에서 모은 것인지. 하나라도 다르면 다시 모아야 한다."""
+    return {
+        "tracks": int(args.tracks),
+        "beams": int(args.beams),
+        "lidar_range": float(args.lidar_range),
+        "teacher": str(args.teacher),
+        "rivals": int(getattr(args, "rivals", 0)),
+        "passage": float(getattr(args, "passage", PASSAGE_MIN)),
+        "laps": int(COLLECT_LAPS),
+        "noise": float(NOISE),
+    }
+
+
+def save_episodes(path, episodes, recipe):
+    """길이가 제각각인 에피소드를 이어 붙이고 경계만 따로 적는다."""
+    lengths = np.array([len(f) for f, _ in episodes], dtype=np.int64)
+    np.savez_compressed(
+        path,
+        features=np.concatenate([f for f, _ in episodes]),
+        labels=np.concatenate([l for _, l in episodes]),
+        lengths=lengths,
+        recipe=np.array(json.dumps(recipe, sort_keys=True)),
+    )
+
+
+def load_episodes(path, recipe):
+    """조건이 같을 때만 돌려준다. 다르면 None."""
+    if not Path(path).exists():
+        return None
+    data = np.load(path, allow_pickle=False)
+    stored = json.loads(str(data["recipe"]))
+    if stored != recipe:
+        return None
+    edges = np.concatenate([[0], np.cumsum(data["lengths"])])
+    return [(data["features"][a:b], data["labels"][a:b])
+            for a, b in zip(edges[:-1], edges[1:])]
+
+
 def to_batches(episodes, batch_size, rng):
     """에피소드를 고정 길이 토막으로 잘라 섞는다."""
     chunks = []
@@ -162,6 +209,9 @@ def main():
                         help="앞서 달리는 상대 차 수. 0이면 정지 장애물만")
     parser.add_argument("--passage", type=float, default=PASSAGE_MIN,
                         help="장애물 옆에 남길 통로 [m]")
+    parser.add_argument("--cache", type=str, default=None,
+                        help="교사 시범을 모아 둘 파일(.npz). 조건이 같으면 "
+                             "다음부터 수집을 건너뛴다")
     parser.add_argument("--out", type=str, default="fly_model.pt")
     parser.add_argument("--dense", action="store_true",
                         help="초파리 배선 대신 전부 연결 (B안 비교군)")
@@ -181,7 +231,15 @@ def main():
         f"{1 / CONTROL_DT:.0f}Hz  (ROBORACER 규정 사양)")
     log(f"계획      트랙 {args.tracks}개 수집 -> {args.epochs}에폭 학습\n")
 
-    episodes = collect(args, rng, log)
+    recipe = _recipe(args)
+    episodes = load_episodes(args.cache, recipe) if args.cache else None
+    if episodes is None:
+        episodes = collect(args, rng, log)
+        if args.cache:
+            save_episodes(args.cache, episodes, recipe)
+            log(f"모은 자료를 {args.cache} 에 저장했다")
+    else:
+        log(f"{args.cache} 에서 모아 둔 자료를 불러왔다 (수집 건너뜀)")
     samples = sum(len(f) for f, _ in episodes)
     log(f"에피소드 {len(episodes)}개, 총 {samples}스텝\n")
 

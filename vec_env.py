@@ -24,11 +24,11 @@ class _Slot:
     """작업자 하나가 맡는 환경 하나. 환경 + 인코더 + 센서 손상."""
 
     def __init__(self, beams, lidar_range, seed, randomize, rivals=0.0,
-                 passage=PASSAGE_MIN):
+                 passage=PASSAGE_MIN, reward=None):
         # 상대 차를 쓸 때만 움직이는 환경을 쓴다. 안 쓰면 예전과 똑같다.
         maker = MovingObstacleEnv if rivals > 0.0 else F1TenthEnv
         self.env = maker(n_beams=beams, lidar_range=lidar_range,
-                         passage=passage)
+                         passage=passage, **(reward or {}))
         self.encoder = LidarEncoder(beams, lidar_range=lidar_range)
         self.rng = np.random.default_rng(seed)
         self.rivals = float(rivals)
@@ -75,9 +75,9 @@ class _Slot:
 
 
 def _worker(pipe, beams, lidar_range, seeds, randomize, rivals=0.0,
-            passage=PASSAGE_MIN):
+            passage=PASSAGE_MIN, reward=None):
     """작업자 프로세스. 맡은 환경들을 굴리고 39채널 값만 돌려준다."""
-    slots = [_Slot(beams, lidar_range, s, randomize, rivals, passage)
+    slots = [_Slot(beams, lidar_range, s, randomize, rivals, passage, reward)
              for s in seeds]
     pipe.send(np.stack([slot.reset() for slot in slots]))
     try:
@@ -109,7 +109,8 @@ class ParallelRunner:
     """
 
     def __init__(self, n_envs, beams, lidar_range, workers=None,
-                 seed=0, randomize=True, rivals=0.0, passage=PASSAGE_MIN):
+                 seed=0, randomize=True, rivals=0.0, passage=PASSAGE_MIN,
+                 reward=None):
         workers = workers or min(8, max(1, n_envs // 2))
         groups = np.array_split(np.arange(n_envs), workers)
         groups = [g for g in groups if len(g)]
@@ -122,7 +123,7 @@ class ParallelRunner:
             proc = context.Process(
                 target=_worker,
                 args=(child, beams, lidar_range, seeds, randomize,
-                      rivals, passage),
+                      rivals, passage, reward),
                 daemon=True,
             )
             proc.start()

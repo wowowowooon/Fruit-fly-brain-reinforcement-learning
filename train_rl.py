@@ -21,7 +21,9 @@ import numpy as np
 import torch
 from torch import nn
 
-from f1tenth_sim import PASSAGE_MIN, CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
+from f1tenth_sim import (CONTROL_DT, CRASH_PENALTY, LIDAR_BEAMS,
+                         LIDAR_RANGE, MARGIN_PENALTY, PASSAGE_MIN,
+                         SHAKE_PENALTY, F1TenthEnv)
 from paths import model as model_path
 from fly_driver import N_MOTION, FEATURE_LIMIT, FlyDriver, LidarEncoder
 from progress import Logger, Progress
@@ -264,6 +266,13 @@ def main():
     parser.add_argument("--passage", type=float, default=PASSAGE_MIN,
                         help="장애물 옆에 남길 통로 [m]. 좁히면 좁은 트랙에도 "
                              "장애물이 생기고 회피가 필수가 된다")
+    parser.add_argument("--crash-penalty", type=float, default=CRASH_PENALTY,
+                        help="충돌 벌점. 한 바퀴 전진 보상이 100~250 이라 "
+                             "20 은 너무 싸다")
+    parser.add_argument("--shake-penalty", type=float, default=SHAKE_PENALTY,
+                        help="조향을 급하게 꺾을 때의 벌점 (0~1 정규화)")
+    parser.add_argument("--margin-penalty", type=float, default=MARGIN_PENALTY,
+                        help="벽·장애물에 바짝 붙었을 때의 벌점 (0~1 정규화)")
     args = parser.parse_args()
 
     torch.manual_seed(0)
@@ -313,12 +322,20 @@ def main():
     workers = args.workers or min(8, max(1, os.cpu_count() // 2))
     runner = ParallelRunner(args.envs, args.beams, args.lidar_range,
                             workers=workers, randomize=not args.no_noise,
-                            rivals=args.rivals, passage=args.passage)
+                            rivals=args.rivals, passage=args.passage,
+                            reward={
+                                "crash_penalty": args.crash_penalty,
+                                "shake_penalty": args.shake_penalty,
+                                "margin_penalty": args.margin_penalty,
+                            })
     log(f"동시에 굴리는 트랙 {args.envs}개 "
         f"(프로세스 {workers}개, 토치 스레드 {torch.get_num_threads()}개)")
     log(f"한 번에 {args.steps}스텝")
     log(f"센서 손상 {'끔' if args.no_noise else '켬 (도메인 랜덤화)'}")
     log(f"장애물 옆 통로 {args.passage:.2f}m")
+    log(f"보상  전진거리 + 충돌 -{args.crash_penalty:g}"
+        f"{f' + 흔들림 -{args.shake_penalty:g}' if args.shake_penalty else ''}"
+        f"{f' + 여유 -{args.margin_penalty:g}' if args.margin_penalty else ''}")
     log(f"움직이는 상대 차 "
         f"{'없음' if args.rivals <= 0 else f'{args.rivals:.0%} 확률로 1~2대'}")
     log(f"수집량 {args.iters * args.envs * args.steps:,}스텝\n")

@@ -66,6 +66,21 @@ LIDAR_AHEAD = 0.31      # base_link 에서 라이다까지 [m]. 팀 실측값
 #   앞 범퍼 +0.19m / 뒤 범퍼 -0.41m / 좌우 각 0.15m
 # 코너에서 뒤가 바깥으로 쓸리는데 라이다는 그쪽을 잘 못 본다.
 
+# --- 보상 ---
+# 기본값은 예전 그대로다(전진 거리 + 충돌 -20). B·C 비교가 이 조건에서
+# 이루어졌으므로 기본값을 바꾸면 비교가 깨진다.
+#
+# 레이싱용 재학습에서는 두 항을 더 켠다. 둘 다 0~1 로 정규화해 두었으므로
+# 계수를 전진 거리(스텝당 약 0.12m)와 직접 견줄 수 있다.
+#   흔들림  — 서보를 얼마나 급하게 꺾었나. 실차에서 핸들 떨림을 막는다.
+#   여유    — 벽이나 장애물에 이만큼 안쪽으로 들어갔을 때만 벌점.
+#             레이싱 라인은 코너 안쪽을 0.3~0.5m 까지 쓰는 것이 정상이라
+#             이 선을 높이면 apex 를 못 쓰고 느려진다. 낮게 잡는다.
+CRASH_PENALTY = 20.0    # 충돌 벌점. 레이싱 재학습에서는 40 을 쓴다
+SHAKE_PENALTY = 0.0     # 조향 흔들림 벌점. 0이면 끔
+MARGIN_PENALTY = 0.0    # 여유 부족 벌점. 0이면 끔
+MARGIN_START = 0.20     # 이보다 가까워지면 벌점이 붙기 시작한다 [m]
+
 # --- 제어 지연 ---
 # 라이다 측정 -> 계산 -> VESC -> 모터까지 실제로 시간이 걸린다.
 # 넣지 않고 학습하면 실차에서 핸들이 떨린다(oscillation).
@@ -485,13 +500,19 @@ class F1TenthEnv(gym.Env):
     def __init__(self, n_beams=LIDAR_BEAMS, dt=CONTROL_DT, max_steps=4000,
                  track_seed=0, lidar_range=LIDAR_RANGE,
                  latency=CONTROL_LATENCY, laps=1, obstacles=True,
-                 passage=PASSAGE_MIN):
+                 passage=PASSAGE_MIN, crash_penalty=CRASH_PENALTY,
+                 shake_penalty=SHAKE_PENALTY, margin_penalty=MARGIN_PENALTY,
+                 margin_start=MARGIN_START):
         super().__init__()
         # 장애물을 끄면 같은 트랙을 장애물만 빼고 다시 달릴 수 있다.
         # 회피 실력과 순수 주행 실력을 갈라 보려면 이 짝 비교가 필요하다.
         self.obstacles = obstacles
         # 장애물 옆에 남길 통로. 좁히면 좁은 트랙에도 장애물이 생긴다.
         self.passage = passage
+        self.crash_penalty = crash_penalty
+        self.shake_penalty = shake_penalty
+        self.margin_penalty = margin_penalty
+        self.margin_start = margin_start
         self.n_beams = n_beams
         self.dt = dt
         self.max_steps = max_steps
@@ -627,6 +648,8 @@ class F1TenthEnv(gym.Env):
         # 서보가 따라오는 속도에 한계가 있다. 한 번에 확 꺾이지 않는다.
         slew = STEER_RATE_MAX * self.dt
         steer = self.steer + np.clip(want_steer - self.steer, -slew, slew)
+        # 서보를 얼마나 급하게 꺾었나. 0(그대로) ~ 1(한계까지 꺾음).
+        shake = abs(steer - self.steer) / slew
         self.steer = float(steer)
 
         # 속도도 즉시 바뀌지 않는다. 브레이크가 가속보다 세다.
@@ -665,7 +688,15 @@ class F1TenthEnv(gym.Env):
         advance = delta * self.step_length
         reward = advance
         if self.crashed:
-            reward -= 20.0
+            reward -= self.crash_penalty
+        # 흔들림: 실차에서 핸들이 떨리는 것을 막는다.
+        if self.shake_penalty:
+            reward -= self.shake_penalty * shake
+        # 여유: 벽이나 장애물에 바짝 붙었을 때만. 레이싱 라인은 코너 안쪽을
+        # 쓰는 것이 정상이라 시작 지점을 낮게 잡아 apex 를 막지 않는다.
+        if self.margin_penalty:
+            short = max(0.0, self.margin_start - (clearance - BODY_RADIUS))
+            reward -= self.margin_penalty * short / self.margin_start
 
         done = self.crashed or self.lap_progress >= step_count * self.laps
         truncated = self.steps >= self.max_steps
@@ -678,6 +709,7 @@ class F1TenthEnv(gym.Env):
             "min_range": float(scan.min()),
             "clearance": clearance,
             "advance": advance,
+            "shake": shake,
             "lap_time": self.steps * self.dt,
         }
         return self._observe(scan), float(reward), done, truncated, info
