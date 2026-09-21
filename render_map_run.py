@@ -9,6 +9,10 @@ import matplotlib
 import numpy as np
 
 matplotlib.use("Agg")
+# 제목을 그리기 전에 지정해야 한다. 영문 기본 글꼴에는 한글이 없어서
+# 늦게 지정하면 이미 그려진 글자가 네모로 남는다.
+matplotlib.rcParams["font.family"] = "Malgun Gothic"
+matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 
 from controllers import follow_the_gap
@@ -82,7 +86,6 @@ def main():
         ax.axis("off")
         fig.colorbar(points, ax=ax, label="speed [m/s]", shrink=0.7)
 
-    plt.rcParams["font.family"] = "Malgun Gothic"
     fig.tight_layout()
     fig.savefig(args.out)
     print(f"저장: {args.out}")

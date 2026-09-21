@@ -23,29 +23,29 @@ def _signed_area(path):
 
 
 def find_start(track, env, counterclockwise=True):
-    """가장 넓은 곳에 차를 놓고, 코스가 뻗은 방향을 찾는다.
+    """중심선 위에 차를 놓고, 코스가 뻗은 방향으로 맞춘다.
 
     코스는 양쪽으로 다 뚫려 있어서 앞만 보고 고르면 방향이 반반이다.
-    한 바퀴 돌아 보고 도는 방향이 원하는 쪽인지 확인한 뒤 필요하면 뒤집는다.
+    예전에는 한 바퀴 돌려 보고 정했는데, 그 주행이 실패하는 코스에서는
+    방향을 못 정할 뿐 아니라 중심선까지 망가뜨렸다. 중심선 자체가
+    폐곡선이므로 도는 방향은 거기서 바로 읽으면 된다.
+
     대회 주행 방향을 맞춰야 학습한 모델을 그대로 올릴 수 있다.
     """
-    position, _ = track.widest_point()
-    best = None
-    for yaw in np.linspace(-np.pi, np.pi, 72, endpoint=False):
-        env.pos, env.yaw = position.copy(), float(yaw)
-        scan = env._scan()
-        ahead = scan[np.abs(env.beam_angles) <= np.deg2rad(10)].min()
-        if best is None or ahead > best[0]:
-            best = (ahead, yaw)
-    heading = float(best[1])
+    line = np.asarray(env.center, dtype=float)
+    if len(line) < 8:
+        line = track.centerline()
+    # 원하는 방향으로 돌게 점 순서를 맞춘다 (양수 넓이 = 반시계)
+    if (_signed_area(line) > 0) != counterclockwise:
+        line = line[::-1]
+        env.set_centerline(line)
 
-    # 그 방향으로 한 바퀴 돌려 보고, 도는 쪽이 반대면 뒤집는다
-    env.start_pose = (position, heading)
-    path, closed = trace_lap(env)
-    if closed and len(path) > 20:
-        turning = _signed_area(path) > 0          # 양수 = 반시계
-        if turning != counterclockwise:
-            heading = float((heading + np.pi + np.pi) % (2 * np.pi) - np.pi)
+    # 가장 넓은 곳에서 가장 가까운 중심선 점에서 출발한다
+    widest, _ = track.widest_point()
+    index = int(np.argmin(np.linalg.norm(line - widest, axis=1)))
+    position = line[index].copy()
+    ahead = line[(index + 3) % len(line)] - position
+    heading = float(np.arctan2(ahead[1], ahead[0]))
     return position, heading
 
 

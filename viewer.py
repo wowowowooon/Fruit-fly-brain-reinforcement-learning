@@ -150,8 +150,7 @@ def main():
         track = MapTrack(args.map)
         env = MapEnv(track, n_beams=args.beams)
         env.start_pose = find_start(track, env)
-        env.set_centerline(trace_lap(env)[0])
-        print(f"실제 코스: {track.name}")
+            print(f"실제 코스: {track.name}")
     else:
         env = F1TenthEnv(n_beams=args.beams)
 

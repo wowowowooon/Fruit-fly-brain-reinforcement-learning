@@ -57,7 +57,6 @@ def on_map(driver, path, beams, lidar_range):
     track = MapTrack(path)
     env = MapEnv(track, n_beams=beams, lidar_range=lidar_range)
     env.start_pose = find_start(track, env)
-    env.set_centerline(trace_lap(env)[0])
     obs, _ = env.reset()
     driver.reset()
     info = {"progress": 0.0}
