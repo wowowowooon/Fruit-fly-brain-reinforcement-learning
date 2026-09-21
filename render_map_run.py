@@ -19,7 +19,7 @@ from controllers import follow_the_gap
 from fly_driver import N_MOTION
 from f1tenth_sim import BODY_RADIUS
 from test_on_map import find_start, trace_lap
-from paths import OUTPUTS
+from paths import OUTPUTS, model as model_path
 from track_map import MapEnv, MapTrack
 
 
@@ -42,7 +42,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("map_yaml")
     parser.add_argument("--out", default=str(OUTPUTS / "map_run.png"))
-    parser.add_argument("--model", default="fly_racer.pt")
+    parser.add_argument("--model", default="C_fly871.pt")
     args = parser.parse_args()
 
     track = MapTrack(args.map_yaml)
@@ -57,7 +57,7 @@ def main():
     runs.append(("고전 Follow the Gap", *drive(env, gap)))
 
     from pathlib import Path
-    if Path(args.model).exists():
+    if model_path(args.model).exists():
         from fly_driver import FlyDriver
         driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range,
                            dt=env.dt).load(args.model)

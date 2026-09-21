@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from controllers import follow_the_gap
+from paths import model as model_path
 from fly_driver import N_MOTION
 from f1tenth_sim import BODY_RADIUS
 from track_map import MapEnv, MapTrack
@@ -92,7 +93,7 @@ def run(env, controller, label, max_steps=8000):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("map_yaml")
-    parser.add_argument("--model", default="fly_model.pt")
+    parser.add_argument("--model", default="C_fly871.pt")
     args = parser.parse_args()
 
     track = MapTrack(args.map_yaml)
@@ -103,19 +104,17 @@ def main():
     print(f"출발 위치 {np.round(env.start_pose[0], 2)}  "
           f"방향 {np.rad2deg(env.start_pose[1]):.0f}도")
 
-    path, closed = trace_lap(env)
-    print(f"중심선 추적: {len(path)}점, 한 바퀴 {'완성' if closed else '미완성'}")
-    if not closed:
-        print("  (고전 컨트롤러가 한 바퀴를 못 돌았다. 진행도는 참고용)")
-    env.set_centerline(path)
-    print(f"코스 길이 약 {env.lap_length:.1f} m\n")
+    # 중심선은 MapEnv 가 맵 모양에서 직접 뽑아 이미 갖고 있다.
+    # 예전처럼 고전 컨트롤러로 한 바퀴 돌려 덮어쓰면, 그 주행이 실패했을 때
+    # 잘린 경로가 중심선이 되어 진행도가 엉터리가 된다.
+    print(f"중심선 {len(env.center)}점, 코스 길이 약 {env.lap_length:.1f} m\n")
 
     print("주행 결과")
     run(env, lambda obs: follow_the_gap(obs[:-N_MOTION] * env.lidar_range,
                                         env.beam_angles, env.lidar_range),
         "고전 (Follow the Gap)")
 
-    if Path(args.model).exists():
+    if model_path(args.model).exists():
         from fly_driver import FlyDriver
         driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range,
                            dt=env.dt).load(args.model)

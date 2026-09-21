@@ -19,6 +19,7 @@ import pygame
 
 from controllers import follow_the_gap
 from f1tenth_sim import BODY_BACK, BODY_FRONT, CAR_WIDTH, F1TenthEnv
+from paths import model as model_path
 from fly_driver import N_MOTION, N_SECTORS, FlyDriver, sensor_channels
 from raceline import StanleyRacer
 
@@ -132,7 +133,7 @@ def draw_field(surface, font, x, y, label, values, width=220, height=40):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="fly_racer.pt")
+    parser.add_argument("--model", default="C_fly871.pt")
     parser.add_argument("--map", default=None, help="ROS 점유격자 .yaml")
     parser.add_argument("--beams", type=int, default=541)
     args = parser.parse_args()
@@ -156,7 +157,7 @@ def main():
 
     driver = FlyDriver(n_beams=env.n_beams, lidar_range=env.lidar_range,
                        dt=env.dt)
-    trained = Path(args.model).exists()
+    trained = model_path(args.model).exists()
     if trained:
         driver.load(args.model)
         print(f"모델: {args.model}")
