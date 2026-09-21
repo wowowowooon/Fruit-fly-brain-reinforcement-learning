@@ -21,7 +21,8 @@ import time
 
 import numpy as np
 
-from f1tenth_sim import BODY_RADIUS, F1TenthEnv, LIDAR_RANGE
+from f1tenth_sim import (BODY_RADIUS, PASSAGE_MIN, F1TenthEnv,
+                         LIDAR_RANGE)
 from fly_driver import FlyDriver
 from moving_obstacles import MovingObstacleEnv
 from paths import model as model_path
@@ -60,6 +61,7 @@ def main():
     parser.add_argument("--beams", type=int, default=541)
     parser.add_argument("--tracks", type=int, default=EVAL_TRACKS)
     parser.add_argument("--rivals", type=int, default=2)
+    parser.add_argument("--passage", type=float, default=PASSAGE_MIN)
     args = parser.parse_args()
 
     driver = FlyDriver(n_beams=args.beams, lidar_range=LIDAR_RANGE,
@@ -76,9 +78,11 @@ def main():
     rows = []
     for i in range(args.tracks):
         seed = EVAL_START + i
-        still = drive(driver, F1TenthEnv(n_beams=args.beams, track_seed=seed), seed)
+        still = drive(driver, F1TenthEnv(n_beams=args.beams, track_seed=seed,
+                                        passage=args.passage), seed)
         moving_env = MovingObstacleEnv(n_beams=args.beams, track_seed=seed,
-                                       rivals=args.rivals)
+                                       rivals=args.rivals,
+                                       passage=args.passage)
         moving = drive(driver, moving_env, seed)
         row = {"seed": seed, "width": float(moving_env.track_width),
                "rivals": len(moving_env.rivals),

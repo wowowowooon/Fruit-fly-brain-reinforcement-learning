@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from f1tenth_sim import F1TenthEnv, LIDAR_RANGE
+from f1tenth_sim import PASSAGE_MIN, F1TenthEnv, LIDAR_RANGE
 from fly_driver import FlyDriver
 from paths import model as model_path
 from vec_env import TRACK_POOL
@@ -35,8 +35,9 @@ EVAL_TRACKS = 45
 EPISODE_STEPS = 3000
 
 
-def run_track(driver, seed, beams, lidar_range):
-    env = F1TenthEnv(n_beams=beams, lidar_range=lidar_range, track_seed=seed)
+def run_track(driver, seed, beams, lidar_range, passage=PASSAGE_MIN):
+    env = F1TenthEnv(n_beams=beams, lidar_range=lidar_range, track_seed=seed,
+                     passage=passage)
     obs, _ = env.reset(seed=seed)
     driver.reset()
     info = {"progress": 0.0, "crashed": False}
@@ -88,6 +89,9 @@ def main():
     parser.add_argument("--lidar-range", type=float, default=LIDAR_RANGE)
     parser.add_argument("--tracks", type=int, default=EVAL_TRACKS)
     parser.add_argument("--map", default=None)
+    parser.add_argument("--passage", type=float, default=PASSAGE_MIN,
+                        help="장애물 옆 통로 [m]. 레이싱용 모델은 1.10 으로 "
+                             "학습하므로 같은 조건에서 재야 한다")
     args = parser.parse_args()
 
     driver = FlyDriver(n_beams=args.beams, lidar_range=args.lidar_range,
@@ -106,7 +110,8 @@ def main():
     started = time.time()
     rows = []
     for i in range(args.tracks):
-        row = run_track(driver, EVAL_START + i, args.beams, args.lidar_range)
+        row = run_track(driver, EVAL_START + i, args.beams, args.lidar_range,
+                        args.passage)
         rows.append(row)
         mark = "완주" if row["done"] else f"{row['progress']:.0%}"
         print(f"  시드 {row['seed']}  폭 {row['width']:.2f}m  "
@@ -124,6 +129,7 @@ def main():
     summary = {
         "model": str(args.model),
         "wiring": "dense" if args.dense else "fly",
+        "passage": float(args.passage),
         "neurons": int(driver.wiring.units),
         "links": int((np.asarray(driver.wiring.adjacency_matrix) != 0).sum()),
         "params_stored": sum(p.numel() for p in driver.model.parameters()),

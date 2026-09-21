@@ -19,7 +19,7 @@ import time
 
 import numpy as np
 
-from f1tenth_sim import F1TenthEnv, LIDAR_RANGE
+from f1tenth_sim import PASSAGE_MIN, F1TenthEnv, LIDAR_RANGE
 from fly_driver import FlyDriver
 from paths import model as model_path
 
@@ -52,6 +52,7 @@ def main():
     parser.add_argument("--dense", action="store_true")
     parser.add_argument("--beams", type=int, default=541)
     parser.add_argument("--tracks", type=int, default=EVAL_TRACKS)
+    parser.add_argument("--passage", type=float, default=PASSAGE_MIN)
     args = parser.parse_args()
 
     driver = FlyDriver(n_beams=args.beams, lidar_range=LIDAR_RANGE,
@@ -69,8 +70,9 @@ def main():
     for i in range(args.tracks):
         seed = EVAL_START + i
         bare_env = F1TenthEnv(n_beams=args.beams, track_seed=seed,
-                              obstacles=False)
-        full_env = F1TenthEnv(n_beams=args.beams, track_seed=seed)
+                              obstacles=False, passage=args.passage)
+        full_env = F1TenthEnv(n_beams=args.beams, track_seed=seed,
+                              passage=args.passage)
         bare = drive(driver, bare_env, seed)
         full = drive(driver, full_env, seed)
         row = {"seed": seed, "width": float(full_env.track_width),
