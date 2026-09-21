@@ -345,22 +345,37 @@ class RacingTeacher:
                             self.plan.normal[index]))
         return index, side
 
+    @staticmethod
+    def _where_at(rival, when):
+        """그 상대가 when 초 뒤에 있을 자리. 예측을 안 주면 지금 자리."""
+        future = rival.get("future")
+        if not future:
+            return np.asarray(rival["pos"], dtype=float)
+        best = min(future, key=lambda item: abs(item[0] - when))
+        return np.asarray(best[1], dtype=float)
+
     def _threat(self, rivals, near, speed):
-        """내 길목을 막을 상대. (만나는 지점, 막힌구간 저, 고, 남은거리)"""
+        """내 길목을 막을 상대. (만나는 지점, 막힌구간 저, 고, 남은거리)
+
+        상대는 코너에서 안쪽을 파고들기 때문에 좌우로도 움직인다.
+        '지금 저기 있으니 저기를 피하자' 로는 늦는다. 내가 따라잡는 데
+        걸리는 시간을 셈해서, 그때 그 차가 있을 자리를 피한다.
+        """
         count = len(self.line)
         reach = max(speed, 1.0) * LOOKAHEAD_TIME
         worst = None
         for rival in rivals:
-            index, side = self._station(np.asarray(rival["pos"], dtype=float))
+            index, _ = self._station(np.asarray(rival["pos"], dtype=float))
             ahead_m = ((index - near) % count) * self.spacing
             if ahead_m > reach:
                 continue                       # 아직 멀다
             # 따라잡는 동안 상대도 앞으로 간다. 실제로 만나는 자리를 쓴다.
             closing = max(speed - float(rival["speed"]), 0.25)
-            meet_m = ahead_m + float(rival["speed"]) * (ahead_m / closing)
+            when = ahead_m / closing
+            meet_m = ahead_m + float(rival["speed"]) * when
             if meet_m > reach:
                 continue                       # 이 시야 안에서는 못 따라잡는다
-            meet = int((near + meet_m / max(self.spacing, 1e-6)) % count)
+            meet, side = self._station(self._where_at(rival, when))
             keep = RIVAL_HALF_WIDTH + HALF_WIDTH + RIVAL_MARGIN
             if worst is None or ahead_m < worst[3]:
                 worst = (meet, side - keep, side + keep, ahead_m)
