@@ -11,26 +11,40 @@ import multiprocessing as mp
 
 import numpy as np
 
-from f1tenth_sim import F1TenthEnv
+from f1tenth_sim import PASSAGE_MIN, F1TenthEnv
 from fly_driver import N_MOTION, FEATURE_LIMIT, LidarEncoder
+from moving_obstacles import MovingObstacleEnv
 from sensor_noise import DomainRandomizer
 
 TRACK_POOL = 400          # 이만큼의 서로 다른 트랙에서 뽑아 쓴다
+RIVAL_COUNT = (1, 3)      # 상대 차를 넣을 때 몇 대까지
 
 
 class _Slot:
     """작업자 하나가 맡는 환경 하나. 환경 + 인코더 + 센서 손상."""
 
-    def __init__(self, beams, lidar_range, seed, randomize):
-        self.env = F1TenthEnv(n_beams=beams, lidar_range=lidar_range)
+    def __init__(self, beams, lidar_range, seed, randomize, rivals=0.0,
+                 passage=PASSAGE_MIN):
+        # 상대 차를 쓸 때만 움직이는 환경을 쓴다. 안 쓰면 예전과 똑같다.
+        maker = MovingObstacleEnv if rivals > 0.0 else F1TenthEnv
+        self.env = maker(n_beams=beams, lidar_range=lidar_range,
+                         passage=passage)
         self.encoder = LidarEncoder(beams, lidar_range=lidar_range)
         self.rng = np.random.default_rng(seed)
+        self.rivals = float(rivals)
+        if rivals > 0.0:
+            self.env.rival_rng = self.rng
         self.fault = DomainRandomizer(
             self.env.beam_angles, lidar_range, np.random.default_rng(seed + 7)
         ) if randomize else None
         self.reset()
 
     def reset(self):
+        if self.rivals > 0.0:
+            # 매 판 상대 차 수를 새로 뽑는다. 없는 판도 섞여야 한다.
+            self.env.rival_count = (
+                int(self.rng.integers(*RIVAL_COUNT))
+                if self.rng.random() < self.rivals else 0)
         raw, _ = self.env.reset(seed=int(self.rng.integers(TRACK_POOL)))
         self.encoder.reset()
         if self.fault is not None:
@@ -60,9 +74,11 @@ class _Slot:
         return features, reward, float(done or truncated), finished
 
 
-def _worker(pipe, beams, lidar_range, seeds, randomize):
-    """작업자 프로세스. 맡은 환경들을 굴리고 37채널 값만 돌려준다."""
-    slots = [_Slot(beams, lidar_range, s, randomize) for s in seeds]
+def _worker(pipe, beams, lidar_range, seeds, randomize, rivals=0.0,
+            passage=PASSAGE_MIN):
+    """작업자 프로세스. 맡은 환경들을 굴리고 39채널 값만 돌려준다."""
+    slots = [_Slot(beams, lidar_range, s, randomize, rivals, passage)
+             for s in seeds]
     pipe.send(np.stack([slot.reset() for slot in slots]))
     try:
         while True:
@@ -93,7 +109,7 @@ class ParallelRunner:
     """
 
     def __init__(self, n_envs, beams, lidar_range, workers=None,
-                 seed=0, randomize=True):
+                 seed=0, randomize=True, rivals=0.0, passage=PASSAGE_MIN):
         workers = workers or min(8, max(1, n_envs // 2))
         groups = np.array_split(np.arange(n_envs), workers)
         groups = [g for g in groups if len(g)]
@@ -105,7 +121,8 @@ class ParallelRunner:
             seeds = [int(seed * 1000 + int(i)) for i in group]
             proc = context.Process(
                 target=_worker,
-                args=(child, beams, lidar_range, seeds, randomize),
+                args=(child, beams, lidar_range, seeds, randomize,
+                      rivals, passage),
                 daemon=True,
             )
             proc.start()

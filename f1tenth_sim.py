@@ -385,11 +385,15 @@ def _blob(middle, size, rng, points=14):
         [wobble * np.cos(angle), wobble * np.sin(angle)], axis=1)
 
 
-def make_obstacles(seed, center, width):
+def make_obstacles(seed, center, width, passage=PASSAGE_MIN):
     """트랙 위에 장애물을 흩뿌린다. 지나갈 틈은 반드시 남긴다.
 
     일부는 좌우로 번갈아 놓아 지그재그(시케인)를 만든다. 실제 코스에서
     급조향이 요구되는 상황이 이렇게 생긴다.
+
+    `passage` 를 줄이면 좁은 트랙에도 장애물이 놓이고 옆 통로도 좁아진다.
+    기본값 1.45m 로는 폭 1.8~2.15m 미만 트랙에 장애물이 하나도 안 놓여서
+    (학습 트랙 400개 중 132개) 좁은 곳에서 피하는 법을 배울 기회가 없다.
     """
     rng = np.random.default_rng([seed, 4242])
     low, high = OBSTACLE_COUNT
@@ -409,7 +413,7 @@ def make_obstacles(seed, center, width):
     blobs = []
     for order, slot in enumerate(sorted(slots)):
         size = rng.uniform(*OBSTACLE_SIZE)
-        room = width / 2 - size - PASSAGE_MIN / 2
+        room = width / 2 - size - passage / 2
         if room <= 0.05:
             continue                      # 이 트랙은 좁아서 못 놓는다
         # 시케인이면 좌우를 번갈아, 아니면 아무 쪽이나
@@ -480,8 +484,14 @@ class F1TenthEnv(gym.Env):
 
     def __init__(self, n_beams=LIDAR_BEAMS, dt=CONTROL_DT, max_steps=4000,
                  track_seed=0, lidar_range=LIDAR_RANGE,
-                 latency=CONTROL_LATENCY, laps=1):
+                 latency=CONTROL_LATENCY, laps=1, obstacles=True,
+                 passage=PASSAGE_MIN):
         super().__init__()
+        # 장애물을 끄면 같은 트랙을 장애물만 빼고 다시 달릴 수 있다.
+        # 회피 실력과 순수 주행 실력을 갈라 보려면 이 짝 비교가 필요하다.
+        self.obstacles = obstacles
+        # 장애물 옆에 남길 통로. 좁히면 좁은 트랙에도 장애물이 생긴다.
+        self.passage = passage
         self.n_beams = n_beams
         self.dt = dt
         self.max_steps = max_steps
@@ -502,8 +512,11 @@ class F1TenthEnv(gym.Env):
 
     def _load_track(self, seed):
         self.center, inner, outer = make_track(seed)
-        self.blobs = make_obstacles(seed, self.center,
-                                    np.linalg.norm(outer - inner, axis=1).mean())
+        self.blobs = make_obstacles(
+            seed, self.center,
+            np.linalg.norm(outer - inner, axis=1).mean(),
+            passage=getattr(self, "passage", PASSAGE_MIN),
+        ) if getattr(self, "obstacles", True) else []
         starts, ends = [], []
         for loop in [inner, outer] + self.blobs:
             a, b = as_segments(loop)

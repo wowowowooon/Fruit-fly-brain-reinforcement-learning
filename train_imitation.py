@@ -17,10 +17,13 @@ import numpy as np
 import torch
 from torch import nn
 
-from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
+from f1tenth_sim import (CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, PASSAGE_MIN,
+                         F1TenthEnv)
 from fly_driver import N_MOTION, FlyDriver, LidarEncoder
+from moving_obstacles import MovingObstacleEnv
 from progress import Logger, Progress
 from raceline import StanleyRacer
+from racing_teacher import RacingTeacher
 
 SEQ_LEN = 64          # RNN에 한 번에 넣는 시간 길이 (40Hz에서 1.6초)
 NOISE = 0.25          # 교사 행동에 섞는 흔들림
@@ -30,8 +33,28 @@ COLLECT_LAPS = 2      # 한 트랙에서 도는 바퀴 수. 레이싱 라인 계
 
 
 def make_env(args, laps=1):
+    """상대 차를 쓸 때만 움직이는 환경. 안 쓰면 예전과 똑같다."""
+    rivals = getattr(args, "rivals", 0)
+    passage = getattr(args, "passage", PASSAGE_MIN)
+    if rivals > 0:
+        return MovingObstacleEnv(n_beams=args.beams, dt=CONTROL_DT,
+                                 lidar_range=args.lidar_range, laps=laps,
+                                 passage=passage, rivals=rivals)
     return F1TenthEnv(n_beams=args.beams, dt=CONTROL_DT,
-                      lidar_range=args.lidar_range, laps=laps)
+                      lidar_range=args.lidar_range, laps=laps,
+                      passage=passage)
+
+
+def make_teacher(args, env):
+    """레이싱 교사와 예전 교사 중 하나.
+
+    예전 교사(raceline.StanleyRacer)는 라인이 장애물을 뚫고 지나가고
+    직선에서 속도를 못 낸다. B·C 비교는 둘 다 그걸로 배웠으므로 그대로
+    두고, 레이싱용 재학습부터 새 교사를 쓴다.
+    """
+    if args.teacher == "legacy":
+        return StanleyRacer.for_env(env)
+    return RacingTeacher.for_env(env)
 
 
 def collect(args, rng, log=print):
@@ -49,14 +72,17 @@ def collect(args, rng, log=print):
         obs, _ = env.reset(seed=track)
         encoder.reset()
         # 교사는 차를 레이싱 라인 위로 옮긴다. 옮긴 뒤의 관측을 다시 읽어야 한다.
-        racer = StanleyRacer.for_env(env)
+        racer = make_teacher(args, env)
         obs = env._observe(env._scan())
         features, labels = [], []
         info = {"crashed": False}
 
         for _ in range(EPISODE_STEPS):
             scan = obs[:-N_MOTION] * env.lidar_range
-            action = racer.act(env.pos, env.yaw, env.speed)
+            action = (racer.act(env.pos, env.yaw, env.speed,
+                                env.rival_states(), env.dt)
+                      if hasattr(env, "rival_states")
+                      else racer.act(env.pos, env.yaw, env.speed))
             features.append(encoder.raw(scan, obs[-N_MOTION:], env.dt))
             labels.append(action.copy())
 
@@ -127,6 +153,15 @@ def main():
     parser.add_argument("--beams", type=int, default=541)
     parser.add_argument("--lidar-range", type=float, default=LIDAR_RANGE)
     parser.add_argument("--eval-every", type=int, default=3)
+    # 레이싱용 재학습에서 쓴다. B·C 비교는 둘 다 legacy 로 배웠다.
+    parser.add_argument("--teacher", choices=("racing", "legacy"),
+                        default="legacy",
+                        help="racing = 장애물 비켜 가고 직선에서 최고속을 내는 "
+                             "새 교사. legacy = 예전 교사")
+    parser.add_argument("--rivals", type=int, default=0,
+                        help="앞서 달리는 상대 차 수. 0이면 정지 장애물만")
+    parser.add_argument("--passage", type=float, default=PASSAGE_MIN,
+                        help="장애물 옆에 남길 통로 [m]")
     parser.add_argument("--out", type=str, default="fly_model.pt")
     parser.add_argument("--dense", action="store_true",
                         help="초파리 배선 대신 전부 연결 (B안 비교군)")

@@ -21,7 +21,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from f1tenth_sim import CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
+from f1tenth_sim import PASSAGE_MIN, CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, F1TenthEnv
 from paths import model as model_path
 from fly_driver import N_MOTION, FEATURE_LIMIT, FlyDriver, LidarEncoder
 from progress import Logger, Progress
@@ -258,6 +258,12 @@ def main():
     parser.add_argument("--dense", action="store_true",
                         help="초파리 배선 대신 전부 연결 (B안 비교군)")
     parser.add_argument("--no-noise", action="store_true")
+    # 레이싱용 재학습에서 쓴다. B·C 비교는 둘 다 기본값(0, 1.45)으로 했다.
+    parser.add_argument("--rivals", type=float, default=0.0,
+                        help="앞서 달리는 상대 차를 넣을 확률 (0~1)")
+    parser.add_argument("--passage", type=float, default=PASSAGE_MIN,
+                        help="장애물 옆에 남길 통로 [m]. 좁히면 좁은 트랙에도 "
+                             "장애물이 생기고 회피가 필수가 된다")
     args = parser.parse_args()
 
     torch.manual_seed(0)
@@ -306,11 +312,15 @@ def main():
 
     workers = args.workers or min(8, max(1, os.cpu_count() // 2))
     runner = ParallelRunner(args.envs, args.beams, args.lidar_range,
-                            workers=workers, randomize=not args.no_noise)
+                            workers=workers, randomize=not args.no_noise,
+                            rivals=args.rivals, passage=args.passage)
     log(f"동시에 굴리는 트랙 {args.envs}개 "
         f"(프로세스 {workers}개, 토치 스레드 {torch.get_num_threads()}개)")
     log(f"한 번에 {args.steps}스텝")
     log(f"센서 손상 {'끔' if args.no_noise else '켬 (도메인 랜덤화)'}")
+    log(f"장애물 옆 통로 {args.passage:.2f}m")
+    log(f"움직이는 상대 차 "
+        f"{'없음' if args.rivals <= 0 else f'{args.rivals:.0%} 확률로 1~2대'}")
     log(f"수집량 {args.iters * args.envs * args.steps:,}스텝\n")
 
     hidden = None

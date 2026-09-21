@@ -53,6 +53,7 @@ def run_track(driver, seed, beams, lidar_range):
         "lap_time": float((step + 1) * env.dt),
         "speed": float(np.mean(speeds)),
         "width": float(env.track_width),
+        "obstacles": int(len(env.blobs)),
     }
 
 
@@ -108,12 +109,17 @@ def main():
         row = run_track(driver, EVAL_START + i, args.beams, args.lidar_range)
         rows.append(row)
         mark = "완주" if row["done"] else f"{row['progress']:.0%}"
-        print(f"  시드 {row['seed']}  폭 {row['width']:.2f}m  {mark:>5s}  "
+        print(f"  시드 {row['seed']}  폭 {row['width']:.2f}m  "
+              f"장애물 {row['obstacles']}개  {mark:>5s}  "
               f"{row['lap_time']:5.1f}초  평균 {row['speed']:.1f} m/s")
 
     done = [r for r in rows if r["done"]]
     narrow = [r for r in rows if r["width"] <= 2.0]
     narrow_done = [r for r in narrow if r["done"]]
+    # 장애물은 트랙 만들 때 시드로 정해진다. 회피 실력과 순수 주행 실력을
+    # 갈라 보려면 있는 트랙과 없는 트랙을 따로 세야 한다.
+    with_obs = [r for r in rows if r["obstacles"] > 0]
+    without_obs = [r for r in rows if r["obstacles"] == 0]
 
     summary = {
         "model": str(args.model),
@@ -130,6 +136,10 @@ def main():
         "speed": float(np.mean([r["speed"] for r in rows])),
         "narrow_tracks": len(narrow),
         "narrow_completed": len(narrow_done),
+        "obstacle_tracks": len(with_obs),
+        "obstacle_completed": sum(r["done"] for r in with_obs),
+        "clear_tracks": len(without_obs),
+        "clear_completed": sum(r["done"] for r in without_obs),
         "seconds": time.time() - started,
         "runs": rows,
     }
@@ -145,6 +155,8 @@ def main():
     print(f"평균 속도 {summary['speed']:.1f} m/s")
     print(f"좁은 트랙 {summary['narrow_completed']}/{summary['narrow_tracks']} "
           f"(폭 2.0m 이하)")
+    print(f"장애물 있음 {summary['obstacle_completed']}/{summary['obstacle_tracks']}"
+          f"   없음 {summary['clear_completed']}/{summary['clear_tracks']}")
     print(f"실제 사용 파라미터 {summary['params_used']:,}개")
     if args.map:
         result = summary["map"]

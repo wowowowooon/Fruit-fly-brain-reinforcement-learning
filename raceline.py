@@ -219,18 +219,35 @@ def _no_worse_than_center(line, center, seg_a, seg_b, clearance):
     그 라인은 차체가 코너 바깥을 크게 쓸어서 그대로 벽에 닿는다.
 
     최적화가 실패한 경우에는 적어도 중심선만큼은 보장되어야 한다.
+
+    단, '중심선은 안전하다' 는 전제가 항상 참은 아니다. 장애물은 트랙이
+    좁으면 중심선에서 6~15cm 밖에 못 비켜서므로 중심선을 그대로 덮는다.
+    그러면 되돌린 라인이 장애물을 뚫고, 교사가 장애물로 돌진하는 시범을
+    보이게 된다 (장애물 있는 트랙 20개 중 13개에서 이렇게 되고 있었다).
+    그래서 마지막에 반드시 여유를 다시 확보한다.
     """
-    best, target = line, _sharpest(center)
+    target = _sharpest(center)
     if _sharpest(line) >= target and _worst_shortfall(
             line, seg_a, seg_b, clearance) >= 0:
         return line
+
+    best, best_gap = line, _worst_shortfall(line, seg_a, seg_b, clearance)
     for weight in (0.25, 0.5, 0.75, 1.0):
         blend = (1.0 - weight) * line + weight * center
-        if (_sharpest(blend) >= target * 0.95
-                and _worst_shortfall(blend, seg_a, seg_b, clearance) >= 0):
+        gap = _worst_shortfall(blend, seg_a, seg_b, clearance)
+        if _sharpest(blend) >= target * 0.95 and gap >= 0:
             return blend
-        best = blend
-    return best
+        # 안 되면 적어도 가장 덜 위험한 것을 남긴다
+        if gap > best_gap:
+            best, best_gap = blend, gap
+    if best_gap >= 0:
+        return best
+    # 전부 부딪힌다. 뚫고 지나가는 시범을 보이느니 밀어내고 본다.
+    return _enforce_clearance(best, seg_a, seg_b,
+                              outer_half_width(1.0 / np.maximum(
+                                  np.abs(path_curvature(best, CURVE_SMOOTH)),
+                                  1e-6)) + clearance,
+                              passes=60)
 
 
 def minimum_curvature_line(center, seg_a, seg_b, rounds=6, points=None,
