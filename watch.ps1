@@ -10,7 +10,7 @@
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$log = Join-Path $PSScriptRoot "train.log"
+$log = Join-Path $PSScriptRoot "logs/train.log"
 
 Write-Host "학습 로그를 지켜봅니다: $log" -ForegroundColor Cyan
 Write-Host "(Ctrl+C 로 종료. 학습 자체는 멈추지 않습니다)" -ForegroundColor DarkGray

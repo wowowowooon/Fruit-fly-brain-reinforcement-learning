@@ -10,6 +10,12 @@ A/B/C 를 비교하려면 재는 방법이 완전히 같아야 한다. 시드가
 결과는 모델 옆에 .json 으로 남는다.
 """
 
+import sys
+from pathlib import Path
+
+# 상위 폴더에 있는 공통 모듈을 찾을 수 있게 한다
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import argparse
 import json
 import time

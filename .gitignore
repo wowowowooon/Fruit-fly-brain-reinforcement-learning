@@ -22,3 +22,8 @@ logs/
 
 # Claude Code 개인 설정 (이 PC에만 해당)
 .claude/settings.local.json
+
+# 실험 결과물 - 다시 돌리면 나온다
+outputs/
+experiments/__pycache__/
+*.npz

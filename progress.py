@@ -6,8 +6,9 @@
 
 import sys
 import time
+from pathlib import Path
 
-LOG_PATH = "train.log"
+LOG_PATH = Path(__file__).resolve().parent / "logs" / "train.log"
 BAR_WIDTH = 24
 
 
