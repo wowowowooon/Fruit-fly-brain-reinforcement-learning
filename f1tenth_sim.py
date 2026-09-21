@@ -502,7 +502,7 @@ class F1TenthEnv(gym.Env):
                  latency=CONTROL_LATENCY, laps=1, obstacles=True,
                  passage=PASSAGE_MIN, crash_penalty=CRASH_PENALTY,
                  shake_penalty=SHAKE_PENALTY, margin_penalty=MARGIN_PENALTY,
-                 margin_start=MARGIN_START):
+                 margin_start=MARGIN_START, friction=None):
         super().__init__()
         # 장애물을 끄면 같은 트랙을 장애물만 빼고 다시 달릴 수 있다.
         # 회피 실력과 순수 주행 실력을 갈라 보려면 이 짝 비교가 필요하다.
@@ -513,6 +513,8 @@ class F1TenthEnv(gym.Env):
         self.shake_penalty = shake_penalty
         self.margin_penalty = margin_penalty
         self.margin_start = margin_start
+        # 노면 마찰. None 이면 매 판 무작위(학습용), 값을 주면 고정(실험용).
+        self.friction = friction
         self.n_beams = n_beams
         self.dt = dt
         self.max_steps = max_steps
@@ -618,9 +620,12 @@ class F1TenthEnv(gym.Env):
         self.yaw_rate = 0.0
         self.accel = 0.0
         # 노면은 매번 다르다. 미끄러운 바닥에서도 달릴 수 있어야 한다.
-        low, high = FRICTION_RANGE
-        self.lat_accel_max = LAT_ACCEL_MAX * float(
-            self.np_random.uniform(low, high))
+        if self.friction is None:
+            low, high = FRICTION_RANGE
+            grip = float(self.np_random.uniform(low, high))
+        else:
+            grip = float(self.friction)
+        self.lat_accel_max = LAT_ACCEL_MAX * grip
         self.steps = 0
         self.lap_progress = 0
         self.prev_index = 0
