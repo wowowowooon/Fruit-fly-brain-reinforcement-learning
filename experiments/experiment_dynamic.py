@@ -24,7 +24,7 @@ import numpy as np
 from f1tenth_sim import (BODY_RADIUS, PASSAGE_MIN, F1TenthEnv,
                          LIDAR_RANGE)
 from fly_driver import FlyDriver
-from moving_obstacles import MovingObstacleEnv
+from moving_obstacles import RIVAL_PACE, MovingObstacleEnv
 from paths import model as model_path
 
 EVAL_START = 700
@@ -62,6 +62,8 @@ def main():
     parser.add_argument("--tracks", type=int, default=EVAL_TRACKS)
     parser.add_argument("--rivals", type=int, default=2)
     parser.add_argument("--passage", type=float, default=PASSAGE_MIN)
+    parser.add_argument("--pace", type=float, nargs=2, default=list(RIVAL_PACE),
+                        help="상대 차 속도 / 그 자리 한계 속도. 두 값 사이에서 뽑는다")
     args = parser.parse_args()
 
     driver = FlyDriver(n_beams=args.beams, lidar_range=LIDAR_RANGE,
@@ -82,7 +84,8 @@ def main():
                                         passage=args.passage), seed)
         moving_env = MovingObstacleEnv(n_beams=args.beams, track_seed=seed,
                                        rivals=args.rivals,
-                                       passage=args.passage)
+                                       passage=args.passage,
+                                       rival_pace=tuple(args.pace))
         moving = drive(driver, moving_env, seed)
         row = {"seed": seed, "width": float(moving_env.track_width),
                "rivals": len(moving_env.rivals),

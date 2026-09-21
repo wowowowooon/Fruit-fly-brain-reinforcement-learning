@@ -13,7 +13,7 @@ import numpy as np
 
 from f1tenth_sim import PASSAGE_MIN, F1TenthEnv
 from fly_driver import N_MOTION, FEATURE_LIMIT, LidarEncoder
-from moving_obstacles import MovingObstacleEnv
+from moving_obstacles import TRAIN_RIVAL_PACE, MovingObstacleEnv
 from sensor_noise import DomainRandomizer
 
 TRACK_POOL = 400          # 이만큼의 서로 다른 트랙에서 뽑아 쓴다
@@ -27,8 +27,9 @@ class _Slot:
                  passage=PASSAGE_MIN, reward=None):
         # 상대 차를 쓸 때만 움직이는 환경을 쓴다. 안 쓰면 예전과 똑같다.
         maker = MovingObstacleEnv if rivals > 0.0 else F1TenthEnv
+        extra = {"rival_pace": TRAIN_RIVAL_PACE} if rivals > 0.0 else {}
         self.env = maker(n_beams=beams, lidar_range=lidar_range,
-                         passage=passage, **(reward or {}))
+                         passage=passage, **extra, **(reward or {}))
         self.encoder = LidarEncoder(beams, lidar_range=lidar_range)
         self.rng = np.random.default_rng(seed)
         self.rivals = float(rivals)

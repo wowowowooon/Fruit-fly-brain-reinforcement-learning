@@ -22,7 +22,7 @@ from torch import nn
 from f1tenth_sim import (CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, PASSAGE_MIN,
                          F1TenthEnv)
 from fly_driver import N_MOTION, FlyDriver, LidarEncoder
-from moving_obstacles import MovingObstacleEnv
+from moving_obstacles import TRAIN_RIVAL_PACE, MovingObstacleEnv
 from progress import Logger, Progress
 from raceline import StanleyRacer
 from racing_teacher import RacingTeacher
@@ -41,7 +41,8 @@ def make_env(args, laps=1):
     if rivals > 0:
         return MovingObstacleEnv(n_beams=args.beams, dt=CONTROL_DT,
                                  lidar_range=args.lidar_range, laps=laps,
-                                 passage=passage, rivals=rivals)
+                                 passage=passage, rivals=rivals,
+                                 rival_pace=TRAIN_RIVAL_PACE)
     return F1TenthEnv(n_beams=args.beams, dt=CONTROL_DT,
                       lidar_range=args.lidar_range, laps=laps,
                       passage=passage)
@@ -126,6 +127,7 @@ def _recipe(args):
         "rivals": int(getattr(args, "rivals", 0)),
         "passage": float(getattr(args, "passage", PASSAGE_MIN)),
         "laps": int(COLLECT_LAPS),
+        "pace": list(TRAIN_RIVAL_PACE),
         "noise": float(NOISE),
     }
 
