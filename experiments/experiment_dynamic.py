@@ -127,8 +127,9 @@ def main():
     print(f"상대 차를 놓을 수 있었던 트랙 {len(with_rivals)}/{len(rows)}")
     print(f"상대 차 없이  {still_done}/{len(with_rivals)} 완주")
     print(f"상대 차 있게  {moving_done}/{len(with_rivals)} 완주   "
-          f"(상대 차 때문에 잃은 트랙 {summary['lost_to_rivals']}개, "
-          f"그중 직접 받은 것 {summary['hit_rival']}개)")
+          f"(상대 차 때문에 잃은 트랙 {summary['lost_to_rivals']}개)")
+    # 원래도 실패하던 트랙에서 상대 차를 받는 경우가 있어서 위 숫자와 다르다
+    print(f"상대 차를 직접 받은 트랙 {summary['hit_rival']}개")
     if summary["lap_cost"] is not None:
         print(f"둘 다 완주한 트랙에서 랩타임 손해 {summary['lap_cost']:+.2f}초")
 

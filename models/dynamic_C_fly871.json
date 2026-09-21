@@ -4,11 +4,11 @@
   "tracks": 45,
   "tracks_with_rivals": 45,
   "still_completed": 39,
-  "moving_completed": 39,
-  "lost_to_rivals": 0,
-  "hit_rival": 0,
-  "lap_cost": 0.007692307692307711,
-  "seconds": 545.0444951057434,
+  "moving_completed": 23,
+  "lost_to_rivals": 16,
+  "hit_rival": 17,
+  "lap_cost": 0.7869565217391304,
+  "seconds": 462.9545912742615,
   "runs": [
     {
       "seed": 700,
@@ -22,11 +22,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 53.95,
-        "hit_rival": false,
-        "closest": 18.31280218343764
+        "done": false,
+        "progress": 0.805,
+        "lap_time": 44.475,
+        "hit_rival": true,
+        "closest": 0.14756038826377618
       }
     },
     {
@@ -43,9 +43,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 17.375,
+        "lap_time": 19.400000000000002,
         "hit_rival": false,
-        "closest": 12.379286019627363
+        "closest": 0.2449742043136357
       }
     },
     {
@@ -64,7 +64,7 @@
         "progress": 1.0,
         "lap_time": 19.900000000000002,
         "hit_rival": false,
-        "closest": 9.255647245357574
+        "closest": 2.635366504953193
       }
     },
     {
@@ -81,9 +81,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 7.8500000000000005,
+        "lap_time": 8.575000000000001,
         "hit_rival": false,
-        "closest": 0.6734721306175644
+        "closest": 0.3814343820174256
       }
     },
     {
@@ -99,10 +99,10 @@
       },
       "moving": {
         "done": true,
-        "progress": 1.0,
-        "lap_time": 18.275000000000002,
-        "hit_rival": false,
-        "closest": 13.393919838106523
+        "progress": 0.9725,
+        "lap_time": 19.950000000000003,
+        "hit_rival": true,
+        "closest": 0.14325120673223257
       }
     },
     {
@@ -119,9 +119,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 16.675,
+        "lap_time": 17.25,
         "hit_rival": false,
-        "closest": 3.0718881118115604
+        "closest": 0.6869046814059538
       }
     },
     {
@@ -136,11 +136,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 9.125,
-        "hit_rival": false,
-        "closest": 5.618251644113604
+        "done": false,
+        "progress": 0.7925,
+        "lap_time": 8.125,
+        "hit_rival": true,
+        "closest": 0.13506419779829062
       }
     },
     {
@@ -155,11 +155,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 15.15,
+        "done": false,
+        "progress": 0.69,
+        "lap_time": 10.8,
         "hit_rival": false,
-        "closest": 10.005337840397868
+        "closest": 0.19925325823764348
       }
     },
     {
@@ -174,11 +174,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 9.4,
-        "hit_rival": false,
-        "closest": 2.0617518134884585
+        "done": false,
+        "progress": 0.6375,
+        "lap_time": 6.525,
+        "hit_rival": true,
+        "closest": 0.14110242107039922
       }
     },
     {
@@ -195,9 +195,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 17.3,
+        "lap_time": 17.975,
         "hit_rival": false,
-        "closest": 12.174917460782325
+        "closest": 0.6422060804028039
       }
     },
     {
@@ -212,11 +212,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 12.325000000000001,
-        "hit_rival": false,
-        "closest": 5.386910212517721
+        "done": false,
+        "progress": 0.6625,
+        "lap_time": 8.625,
+        "hit_rival": true,
+        "closest": 0.13751032868845633
       }
     },
     {
@@ -233,9 +233,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 14.600000000000001,
+        "lap_time": 15.55,
         "hit_rival": false,
-        "closest": 5.312516330400373
+        "closest": 0.2178957508824601
       }
     },
     {
@@ -251,10 +251,10 @@
       },
       "moving": {
         "done": true,
-        "progress": 1.0,
-        "lap_time": 35.975,
-        "hit_rival": false,
-        "closest": 13.10829644394171
+        "progress": 0.98,
+        "lap_time": 36.075,
+        "hit_rival": true,
+        "closest": 0.132788722775698
       }
     },
     {
@@ -269,11 +269,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 32.45,
-        "hit_rival": false,
-        "closest": 14.586936735928909
+        "done": false,
+        "progress": 0.92,
+        "lap_time": 30.525000000000002,
+        "hit_rival": true,
+        "closest": 0.14738421092125234
       }
     },
     {
@@ -289,10 +289,10 @@
       },
       "moving": {
         "done": true,
-        "progress": 1.0,
-        "lap_time": 20.375,
-        "hit_rival": false,
-        "closest": 10.093816851066428
+        "progress": 0.9775,
+        "lap_time": 23.675,
+        "hit_rival": true,
+        "closest": 0.13867542931472482
       }
     },
     {
@@ -309,9 +309,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 13.725000000000001,
+        "lap_time": 14.175,
         "hit_rival": false,
-        "closest": 10.5929485800837
+        "closest": 0.2578819695528963
       }
     },
     {
@@ -326,11 +326,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 21.950000000000003,
-        "hit_rival": false,
-        "closest": 11.414945554683358
+        "done": false,
+        "progress": 0.91,
+        "lap_time": 21.650000000000002,
+        "hit_rival": true,
+        "closest": 0.13786816680713476
       }
     },
     {
@@ -347,9 +347,9 @@
       "moving": {
         "done": false,
         "progress": 0.905,
-        "lap_time": 9.600000000000001,
+        "lap_time": 9.875,
         "hit_rival": false,
-        "closest": 1.5139953057395459
+        "closest": 0.6694922739211027
       }
     },
     {
@@ -368,7 +368,7 @@
         "progress": 0.1225,
         "lap_time": 2.75,
         "hit_rival": false,
-        "closest": 18.157986999480677
+        "closest": 21.467931296810868
       }
     },
     {
@@ -383,11 +383,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 32.975,
-        "hit_rival": false,
-        "closest": 12.442951307578792
+        "done": false,
+        "progress": 0.7125,
+        "lap_time": 24.325000000000003,
+        "hit_rival": true,
+        "closest": 0.1275236246049707
       }
     },
     {
@@ -404,9 +404,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 16.6,
+        "lap_time": 16.925,
         "hit_rival": false,
-        "closest": 7.298982650270168
+        "closest": 0.9694049026154608
       }
     },
     {
@@ -421,11 +421,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 22.8,
-        "hit_rival": false,
-        "closest": 16.799007635480127
+        "done": false,
+        "progress": 0.7825,
+        "lap_time": 18.05,
+        "hit_rival": true,
+        "closest": 0.14449263677067117
       }
     },
     {
@@ -442,9 +442,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 12.475000000000001,
+        "lap_time": 13.0,
         "hit_rival": false,
-        "closest": 5.906291788099987
+        "closest": 0.8032307411775427
       }
     },
     {
@@ -461,9 +461,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 32.45,
+        "lap_time": 33.050000000000004,
         "hit_rival": false,
-        "closest": 13.665762107914585
+        "closest": 0.31732057820775367
       }
     },
     {
@@ -480,9 +480,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 20.400000000000002,
+        "lap_time": 21.025000000000002,
         "hit_rival": false,
-        "closest": 23.498905085831034
+        "closest": 0.3098393178624001
       }
     },
     {
@@ -497,11 +497,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 14.825000000000001,
+        "done": false,
+        "progress": 0.74,
+        "lap_time": 11.9,
         "hit_rival": false,
-        "closest": 16.506039470534695
+        "closest": 1.2125987099805697
       }
     },
     {
@@ -520,7 +520,7 @@
         "progress": 0.0875,
         "lap_time": 1.4500000000000002,
         "hit_rival": false,
-        "closest": 17.45445163589474
+        "closest": 17.121325740201296
       }
     },
     {
@@ -537,9 +537,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 15.625,
+        "lap_time": 16.95,
         "hit_rival": false,
-        "closest": 9.895525231586364
+        "closest": 0.3064053595540624
       }
     },
     {
@@ -555,10 +555,10 @@
       },
       "moving": {
         "done": true,
-        "progress": 1.0,
-        "lap_time": 20.6,
-        "hit_rival": false,
-        "closest": 12.047389072754212
+        "progress": 0.9725,
+        "lap_time": 21.75,
+        "hit_rival": true,
+        "closest": 0.13951698066975227
       }
     },
     {
@@ -573,11 +573,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 28.075000000000003,
+        "done": false,
+        "progress": 0.645,
+        "lap_time": 18.55,
         "hit_rival": false,
-        "closest": 8.358167969026905
+        "closest": 1.0257419795825533
       }
     },
     {
@@ -592,11 +592,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 41.425000000000004,
+        "done": false,
+        "progress": 0.87,
+        "lap_time": 36.15,
         "hit_rival": false,
-        "closest": 22.882676118350442
+        "closest": 0.2429695390772403
       }
     },
     {
@@ -611,11 +611,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 32.550000000000004,
-        "hit_rival": false,
-        "closest": 3.798928120584514
+        "done": false,
+        "progress": 0.64,
+        "lap_time": 21.575000000000003,
+        "hit_rival": true,
+        "closest": 0.14444602237439436
       }
     },
     {
@@ -634,7 +634,7 @@
         "progress": 0.72,
         "lap_time": 30.150000000000002,
         "hit_rival": false,
-        "closest": 22.492420278665392
+        "closest": 3.211161384329278
       }
     },
     {
@@ -651,9 +651,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 16.900000000000002,
+        "lap_time": 17.475,
         "hit_rival": false,
-        "closest": 6.806845848165395
+        "closest": 0.6214333035700704
       }
     },
     {
@@ -670,9 +670,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 11.725000000000001,
+        "lap_time": 11.925,
         "hit_rival": false,
-        "closest": 5.202407737842649
+        "closest": 1.1986003040385274
       }
     },
     {
@@ -687,11 +687,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 35.725,
-        "hit_rival": false,
-        "closest": 14.621813159538094
+        "done": false,
+        "progress": 0.7375,
+        "lap_time": 26.975,
+        "hit_rival": true,
+        "closest": 0.1413486585618281
       }
     },
     {
@@ -710,7 +710,7 @@
         "progress": 0.4175,
         "lap_time": 8.4,
         "hit_rival": false,
-        "closest": 16.543487400061167
+        "closest": 8.762082244689488
       }
     },
     {
@@ -726,10 +726,10 @@
       },
       "moving": {
         "done": true,
-        "progress": 1.0,
-        "lap_time": 14.425,
-        "hit_rival": false,
-        "closest": 10.1433582355139
+        "progress": 0.9725,
+        "lap_time": 14.75,
+        "hit_rival": true,
+        "closest": 0.1343540091706712
       }
     },
     {
@@ -746,9 +746,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 15.725000000000001,
+        "lap_time": 16.150000000000002,
         "hit_rival": false,
-        "closest": 6.215818966498944
+        "closest": 0.2691749672037519
       }
     },
     {
@@ -767,7 +767,7 @@
         "progress": 0.095,
         "lap_time": 3.8000000000000003,
         "hit_rival": false,
-        "closest": 30.31722851155489
+        "closest": 30.273409829550552
       }
     },
     {
@@ -782,11 +782,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 12.525,
-        "hit_rival": false,
-        "closest": 10.144516806032046
+        "done": false,
+        "progress": 0.845,
+        "lap_time": 11.275,
+        "hit_rival": true,
+        "closest": 0.1255325404264619
       }
     },
     {
@@ -803,9 +803,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 28.0,
+        "lap_time": 28.400000000000002,
         "hit_rival": false,
-        "closest": 8.296722153185614
+        "closest": 0.8744654525389376
       }
     },
     {
@@ -822,9 +822,9 @@
       "moving": {
         "done": true,
         "progress": 1.0,
-        "lap_time": 19.900000000000002,
+        "lap_time": 20.75,
         "hit_rival": false,
-        "closest": 10.98734746787535
+        "closest": 0.1641961511392573
       }
     },
     {
@@ -843,7 +843,7 @@
         "progress": 1.0,
         "lap_time": 23.625,
         "hit_rival": false,
-        "closest": 15.910452175167345
+        "closest": 2.862511914740478
       }
     },
     {
@@ -858,11 +858,11 @@
         "closest": null
       },
       "moving": {
-        "done": true,
-        "progress": 1.0,
-        "lap_time": 13.950000000000001,
-        "hit_rival": false,
-        "closest": 7.34071370967326
+        "done": false,
+        "progress": 0.7125,
+        "lap_time": 10.9,
+        "hit_rival": true,
+        "closest": 0.14954914907946798
       }
     }
   ]
