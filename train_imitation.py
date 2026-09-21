@@ -361,7 +361,10 @@ def run_training(driver, episodes, args, rng, log, best, tag):
     # 뒤로 갈수록 보폭을 줄여서 좋은 지점을 지나치지 않게 한다.
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
     loss_fn = nn.MSELoss()
-    eval_seeds = [100, 101, 102, 103, 104]
+    # 학습에 쓴 트랙(0~399)과 겹치면 안 된다. 100~104 는 수집 범위 안이라,
+    # 본 트랙에서 잘한 모델을 고르고 있었다. 최종 평가(700~744)와도 겹치면
+    # 안 되므로 그 사이를 쓴다.
+    eval_seeds = [600, 601, 602, 603, 604]
 
     bar = Progress(args.epochs, tag, log)
     for epoch in range(1, args.epochs + 1):
