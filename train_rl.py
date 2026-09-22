@@ -237,6 +237,24 @@ def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
     return float(np.mean(losses))
 
 
+def _snapshot(driver, policy, args, iteration, name):
+    """가중치를 저장한다.
+
+    paths.model 을 거치지 않으면 실행한 폴더에 떨어진다. 모델이 models/
+    안에 있는 줄 알고 찾다가 '학습 전' 이라는 말을 듣게 된다.
+    """
+    torch.save({
+        "model": driver.model.state_dict(),
+        "mean": driver.encoder.mean, "std": driver.encoder.std,
+        "lidar_range": args.lidar_range, "dt": CONTROL_DT,
+        "log_std": policy.log_std.detach(),
+        "trained_beams": args.beams,
+        "iteration": iteration,
+        # 이어서 학습할 때 쓸 것들
+        "critic": policy.critic.state_dict(),
+    }, model_path(name))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--iters", type=int, default=300)
@@ -298,6 +316,17 @@ def main():
         raise SystemExit("정규화 통계가 없다. 모방학습을 먼저 돌려라.")
 
     policy = RacingPolicy(driver.model, len(driver.channels))
+    # 강화학습 결과에서 이어 가는 경우, 비평가와 탐색 폭도 이어받는다.
+    # 비평가를 새로 만들면 처음 수백 회 동안 학습 방향이 엉뚱해진다.
+    resumed = model_path(args.init)
+    if resumed.exists():
+        saved = torch.load(resumed, map_location="cpu", weights_only=False)
+        if "critic" in saved:
+            policy.critic.load_state_dict(saved["critic"])
+            with torch.no_grad():
+                policy.log_std.copy_(saved["log_std"])
+            log(f"비평가와 탐색 폭도 이어받았다 "
+                f"(저장된 반복 {saved.get('iteration')})")
     optimizer = torch.optim.Adam([
         {"params": policy.policy_parameters(), "lr": args.lr},
         {"params": policy.critic.parameters(), "lr": args.lr * 3},
@@ -367,20 +396,20 @@ def main():
             score = rate * 100 + speed
             if score > best and rate > 0.5:
                 best = score
-                torch.save({
-                    "model": driver.model.state_dict(),
-                    "mean": driver.encoder.mean, "std": driver.encoder.std,
-                    "lidar_range": args.lidar_range, "dt": CONTROL_DT,
-                    "log_std": policy.log_std.detach(),
-                    "trained_beams": args.beams,
-                    "iteration": it,
-                }, args.out)
+                _snapshot(driver, policy, args, it, args.out)
                 note += " 저장"
         note += f"  흔들림 {policy.log_std.exp().mean():.2f}"
         if pull > 0:
             note += f"  붙듦 {pull:.3f}"
         bar.step(it, note)
     bar.done()
+    # 마지막 정책도 따로 남긴다. '최고' 는 최근 60판의 완주율로 고르는데
+    # 그 창이 흔들려서, 운 좋은 한 구간이 뽑히고 마지막 정책은 사라진다.
+    # 둘 다 있어야 재서 고를 수 있다.
+    last = Path(args.out)
+    _snapshot(driver, policy, args, args.iters,
+              f"{last.stem}_last{last.suffix}")
+    log(f"마지막 정책은 {last.stem}_last{last.suffix} 에 따로 저장했다")
 
     log(f"\n-> {args.out} 저장됨")
     log("test_on_map.py 로 실제 대회 코스에서 확인하세요.")
