@@ -500,7 +500,8 @@ class F1TenthEnv(gym.Env):
     def __init__(self, n_beams=LIDAR_BEAMS, dt=CONTROL_DT, max_steps=4000,
                  track_seed=0, lidar_range=LIDAR_RANGE,
                  latency=CONTROL_LATENCY, laps=1, obstacles=True,
-                 passage=PASSAGE_MIN, crash_penalty=CRASH_PENALTY,
+                 passage=PASSAGE_MIN, motion=3, steer_mode="angle",
+                 crash_penalty=CRASH_PENALTY,
                  shake_penalty=SHAKE_PENALTY, margin_penalty=MARGIN_PENALTY,
                  margin_start=MARGIN_START, friction=None):
         super().__init__()
@@ -515,6 +516,17 @@ class F1TenthEnv(gym.Env):
         self.margin_start = margin_start
         # 노면 마찰. None 이면 매 판 무작위(학습용), 값을 주면 고정(실험용).
         self.friction = friction
+        # 관측에 붙는 자기 움직임 채널 수.
+        #   3 = 속도, 각속도, 가속도            (B·C·R 안이 쓴 것)
+        #   4 = 위 + 현재 조향각                (T안)
+        # 조향각을 모르면 '조향 각속도' 를 낼 수가 없다. 얼마나 더 돌릴지는
+        # 지금 얼마나 꺾여 있는지를 알아야 정해진다.
+        self.motion = int(motion)
+        # 행동[0] 의 뜻.
+        #   "angle" = 목표 조향각 (-1~1 이 좌우 최대)
+        #   "rate"  = 조향 각속도 (-1~1 이 서보 속도 한계). 조향각이 연속으로만
+        #             변해서 떨림이 구조적으로 불가능해진다.
+        self.steer_mode = steer_mode
         self.n_beams = n_beams
         self.dt = dt
         self.max_steps = max_steps
@@ -527,7 +539,8 @@ class F1TenthEnv(gym.Env):
         self.beam_angles = np.linspace(-LIDAR_FOV / 2, LIDAR_FOV / 2, n_beams)
 
         # 관측: 라이다 거리(0~1) + 현재 속도(0~1)
-        self.observation_space = spaces.Box(-1.0, 1.0, (n_beams + 3,), np.float32)
+        self.observation_space = spaces.Box(
+            -1.0, 1.0, (n_beams + self.motion,), np.float32)
         # 행동: 조향(-1~1), 속도(-1~1)
         self.action_space = spaces.Box(-1.0, 1.0, (2,), np.float32)
 
@@ -591,12 +604,12 @@ class F1TenthEnv(gym.Env):
     def _observe(self, scan):
         # 라이다 + IMU. 실차도 /scan 과 /imu 두 가지를 받는다.
         # 각속도는 자이로가, 가속도는 가속도계가 직접 준다.
-        return np.concatenate([
-            scan / self.lidar_range,
-            [self.speed / MAX_SPEED,
-             self.yaw_rate / YAW_RATE_MAX,
-             self.accel / MAX_ACCEL],
-        ]).astype(np.float32)
+        motion = [self.speed / MAX_SPEED,
+                  self.yaw_rate / YAW_RATE_MAX,
+                  self.accel / MAX_ACCEL]
+        if self.motion >= 4:
+            motion.append(self.steer / MAX_STEER)
+        return np.concatenate([scan / self.lidar_range, motion]).astype(np.float32)
 
     def _progress(self):
         """중심선 위 어디쯤 왔는지 (0~1)."""
@@ -647,7 +660,14 @@ class F1TenthEnv(gym.Env):
             self.queued.append(action)
             action = self.queued.popleft()
 
-        want_steer = float(np.clip(action[0], -1, 1)) * MAX_STEER
+        if self.steer_mode == "rate":
+            # 행동이 '얼마나 빨리 돌릴지' 다. 조향각은 그걸 쌓은 값이라
+            # 한 스텝에 서보 한계 이상 못 움직인다.
+            want_steer = self.steer + (float(np.clip(action[0], -1, 1))
+                                       * STEER_RATE_MAX * self.dt)
+            want_steer = float(np.clip(want_steer, -MAX_STEER, MAX_STEER))
+        else:
+            want_steer = float(np.clip(action[0], -1, 1)) * MAX_STEER
         target = (float(np.clip(action[1], -1, 1)) + 1) / 2 * MAX_SPEED
 
         # 서보가 따라오는 속도에 한계가 있다. 한 번에 확 꺾이지 않는다.
