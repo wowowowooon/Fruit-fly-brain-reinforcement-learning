@@ -43,7 +43,7 @@ from f1tenth_sim import (CAR_WIDTH, CONTROL_LATENCY, MAX_SPEED,
 from raceline import (BRAKE_ACCEL, CURVE_SMOOTH, DRIVE_ACCEL,
                       FEEDFORWARD_LEAD, HALF_WIDTH, HEADING_BLEND_M,
                       HEADING_GAIN, LAT_ACCEL, SAFETY, SPEED_MIN, STANLEY_K,
-                      STANLEY_SOFTENING, WIDTH_SPEED_GAIN, _normals,
+                      STANLEY_SOFTENING, _normals,
                       _resample, _second_difference, _solve_box,
                       outer_half_width, path_curvature)
 
@@ -66,6 +66,16 @@ CORRIDOR_PASSES = 3
 # ---- 속도 ---------------------------------------------------------------
 # 곧은 구간에서는 통로 폭이 속도를 묶지 않는다. 코너에서만 묶는다.
 # 회전반경이 이보다 크면(= 거의 직선) 폭 제한을 아예 걸지 않는다.
+# 코너에서 통로 폭이 속도를 얼마나 묶을지. raceline.py 의 값(3.5)을 그대로
+# 쓰면 통로 반폭 0.8m 에서 3.77 m/s 로 묶이는데, 그 자리 마찰 한계는
+# 6.09 m/s 다. 마찰이 아니라 이 값이 코너 속도를 정하고 있었다.
+# 시드 700~744 에서 재서 골랐다 (랩 / 흔들림 하 완주 / 최소 여유):
+#   3.5  18.54초  45/45  0.113      4.5  17.66초  44/45  0.138
+#   5.5  17.07초  44/45  0.110  <-  6.5  16.70초  45/45  0.085
+# 6.5 가 더 빠르지만 여유가 0.085 로 준다. 여유가 곧 위험이라는 것이
+# 이번 측정의 핵심이라 5.5 를 쓴다.
+WIDTH_SPEED_GAIN = 5.5
+
 STRAIGHT_RADIUS = 18.0       # [m]
 CORNER_RADIUS = 3.0          # [m] 이보다 급하면 폭 제한을 그대로 건다
 # 곧은 구간이어도 폭 제한을 이만큼은 남긴다. 0 이면 폭 1.7m 트랙 직선에서도
