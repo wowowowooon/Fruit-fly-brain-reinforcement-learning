@@ -374,6 +374,12 @@ def main():
                         help="공간적 항에서 관측을 흔들 크기")
     parser.add_argument("--real-tracks", type=float, default=0.0,
                         help="실제 서킷을 쓸 확률 (0~1)")
+    parser.add_argument("--margin-start", type=float, default=0.20,
+                        help="벽에서 이만큼 안쪽부터 벌점 [m]")
+    parser.add_argument("--margin-power", type=float, default=1.0,
+                        help="2 면 제곱. 0 근처에서 훨씬 급해진다")
+    parser.add_argument("--narrow", type=float, default=0.0,
+                        help="대회를 닮은 좁은 지그재그 트랙을 쓸 확률 (0~1)")
     parser.add_argument("--valid-every", type=int, default=50,
                         help="몇 회마다 고정 검증 트랙에서 재고 모델을 고를지")
     parser.add_argument("--clip", type=float, default=CLIP)
@@ -441,12 +447,15 @@ def main():
                             workers=workers, randomize=not args.no_noise,
                             rivals=args.rivals, passage=args.passage,
                             motion=args.motion, real_tracks=args.real_tracks,
+                            narrow=args.narrow,
                             reward={
                                 "crash_penalty": args.crash_penalty,
                                 "shake_penalty": args.shake_penalty,
                                 "margin_penalty": args.margin_penalty,
                                 "multiply_penalty": args.multiply_penalty,
                                 "crash_speed": args.crash_speed,
+                                "margin_start": args.margin_start,
+                                "margin_power": args.margin_power,
                             })
     log(f"동시에 굴리는 트랙 {args.envs}개 "
         f"(프로세스 {workers}개, 토치 스레드 {torch.get_num_threads()}개)")
@@ -456,8 +465,9 @@ def main():
     if args.caps_time or args.caps_space:
         log(f"CAPS  시간적 {args.caps_time:g}  공간적 {args.caps_space:g}"
             f"  (관측 흔들기 {args.caps_sigma:g})")
-    if args.real_tracks:
-        log(f"실제 서킷 {args.real_tracks:.0%} 확률로 사용")
+    if args.real_tracks or args.narrow:
+        log(f"트랙 섞기  실제 서킷 {args.real_tracks:.0%}  "
+            f"지그재그 {args.narrow:.0%}  나머지는 생성 트랙")
     log(f"보상  {'곱셈' if args.multiply_penalty else '덧셈'} 합성. "
         f"전진거리 + 충돌 -{args.crash_penalty:g}"
         f"{f' + 흔들림 -{args.shake_penalty:g}' if args.shake_penalty else ''}"

@@ -79,7 +79,12 @@ LIDAR_AHEAD = 0.31      # base_link 에서 라이다까지 [m]. 팀 실측값
 CRASH_PENALTY = 20.0    # 충돌 벌점. 레이싱 재학습에서는 40 을 쓴다
 SHAKE_PENALTY = 0.0     # 조향 흔들림 벌점. 0이면 끔
 MARGIN_PENALTY = 0.0    # 여유 부족 벌점. 0이면 끔
-MARGIN_START = 0.20     # 이보다 가까워지면 벌점이 붙기 시작한다 [m]
+# 이보다 가까워지면 벌점이 붙기 시작한다 [m].
+# 측정: R안이 뒤집히는 트랙 5개 = 최소 여유 6cm 미만인 트랙 5개, 100% 일치.
+# 0.20m 에 선형으로 걸면 5cm 나 15cm 나 비슷하게 취급되어 0cm 까지 붙는다.
+# 시작선을 올리고 0 근처에서 제곱으로 급하게 세운다.
+MARGIN_START = 0.20
+MARGIN_POWER = 1.0      # 2.0 이면 제곱. 0 근처에서 훨씬 급해진다
 
 # 벌점을 전진 보상에 '곱한다'. 더하면 묻힌다 — 흔들림 벌점을 3배로 올려도
 # 떨림이 2% 밖에 안 줄었다. 곱하면 벌점이 클수록 전진 보상 자체가 깎인다.
@@ -331,6 +336,65 @@ def _circuit_loop(rng, radius, points, corner_radius):
     return _rounded_polygon(polygon, corner_radius, points)
 
 
+# --- 대회를 닮은 좁은 지그재그 트랙 ---
+# 검증에만 쓰는 것이 아니라 학습에도 넣는다. 대회 코스가 학습 분포
+# 밖이면 거기서 어떻게 될지 알 수 없다.
+NARROW_SIZE = (14.0, 24.0)      # 긴 쪽 길이 [m]. 대회는 19.2
+NARROW_ASPECT = (2.6, 4.2)      # 가로세로비. 대회는 3.42
+NARROW_WIDTH = (1.65, 2.10)     # 통로 폭 [m]. 대회는 1.9
+NARROW_CORNERS = (9, 16)        # 꼭짓점 수. 많을수록 급코너가 촘촘해진다
+NARROW_RADIUS = (0.85, 1.6)     # 코너 반경 [m]. 대회 반경 하위 5% 는 0.91
+# 보통 트랙은 '반경 >= 1.30 x 폭의 절반' 이어야 주행 가능으로 본다.
+# 그런데 그 기준으로 2026 대회 코스를 재면 0.73 < 1.235 로 '주행 불가' 다.
+# 실제로는 B·C·R 안이 전부 완주한다. 좁은 트랙에는 기준을 대회 코스에 맞춘다.
+NARROW_MARGIN = 0.70            # 반경 / (폭의 절반). 대회는 0.77
+NARROW_FLOOR = 0.70             # 반경 하한 [m]. 차의 최소 회전반경은 0.39
+
+
+def _narrow_loop(rng, length, aspect, points, corner_radius, corners):
+    """길쭉한 상자 안을 도는 폐곡선. 꼭짓점을 상자에 맞춰 찍고 나서 깎는다.
+
+    둥근 모양을 만든 뒤 누르면 코너가 뾰족해져 못 쓰게 된다. 처음부터
+    길쭉하게 찍으면 코너 반경이 그대로 남는다.
+    """
+    half_x = length / 2
+    half_y = length / (2 * aspect)
+    angle = np.linspace(0, 2 * np.pi, corners, endpoint=False) +         rng.uniform(-0.12, 0.12, corners)
+    # 안팎으로 흔들어 코스가 파고들게 한다. 그래야 급코너가 생긴다.
+    # 너무 크게 흔들면 이웃 꼭짓점이 붙어서 원호가 들어갈 자리가 없다.
+    reach = rng.uniform(0.62, 1.0, corners)
+    polygon = np.stack([half_x * reach * np.cos(angle),
+                        half_y * reach * np.sin(angle)], axis=1)
+    # 변이 짧으면 요청한 반경의 원호가 안 들어가고 뾰족한 끝이 남는다.
+    # 가장 짧은 변에 맞춰 반경을 잘라 둔다.
+    edges = np.linalg.norm(np.roll(polygon, -1, axis=0) - polygon, axis=1)
+    fit = float(np.min(edges)) * 0.42
+    return _rounded_polygon(polygon, min(corner_radius, fit), points)
+
+
+def make_narrow_track(seed=0, points=400):
+    """대회 코스를 닮은 트랙. 좁고 길쭉하고 급코너가 촘촘하다."""
+    for attempt in range(400):
+        rng = np.random.default_rng([seed, attempt, 777])
+        length = rng.uniform(*NARROW_SIZE)
+        aspect = rng.uniform(*NARROW_ASPECT)
+        width = rng.uniform(*NARROW_WIDTH)
+        corners = int(rng.integers(*NARROW_CORNERS))
+        radius = rng.uniform(*NARROW_RADIUS)
+        center = _narrow_loop(rng, length, aspect, points, radius, corners)
+        if rng.random() < 0.5:
+            center = center[::-1]
+        center = _resample(center, points)
+        if _min_curve_radius(center) < max(width / 2 * NARROW_MARGIN,
+                                           NARROW_FLOOR):
+            continue                  # 벽이 접힌다. 주행 불가
+        if _self_overlaps(center, width):
+            continue
+        inner, outer = _offset_walls(center, width, rng)
+        return center, inner, outer
+    return make_track(seed, points)   # 운 나쁜 시드는 보통 트랙으로
+
+
 def make_track(seed=0, points=400):
     """폐곡선 트랙. 중심선과 좌우 벽을 돌려준다.
 
@@ -516,7 +580,8 @@ class F1TenthEnv(gym.Env):
                  shake_penalty=SHAKE_PENALTY, margin_penalty=MARGIN_PENALTY,
                  margin_start=MARGIN_START, friction=None,
                  multiply_penalty=MULTIPLY_PENALTY, shake_gate=SHAKE_GATE,
-                 crash_speed=CRASH_SPEED, circuit=None):
+                 crash_speed=CRASH_SPEED, circuit=None,
+                 margin_power=MARGIN_POWER):
         super().__init__()
         # 장애물을 끄면 같은 트랙을 장애물만 빼고 다시 달릴 수 있다.
         # 회피 실력과 순수 주행 실력을 갈라 보려면 이 짝 비교가 필요하다.
@@ -530,10 +595,13 @@ class F1TenthEnv(gym.Env):
         self.multiply_penalty = bool(multiply_penalty)
         self.shake_gate = float(shake_gate)
         self.crash_speed = float(crash_speed)
+        self.margin_power = float(margin_power)
         # 실제 서킷 이름(Monza 등)을 주면 시드로 만드는 대신 그것을 쓴다.
         # 우리가 만드는 트랙은 모양이 한정돼 있는데, 2026 대회 코스는
         # 가로세로비 3.42 로 학습 분포(최대 2.91) 밖이다.
         self.circuit = circuit
+        # True 면 대회를 닮은 좁은 지그재그 트랙을 만든다.
+        self.narrow = False
         # 노면 마찰. None 이면 매 판 무작위(학습용), 값을 주면 고정(실험용).
         self.friction = friction
         # 관측에 붙는 자기 움직임 채널 수. 순서는 고정이다.
@@ -577,6 +645,8 @@ class F1TenthEnv(gym.Env):
             rng = np.random.default_rng([abs(hash(self.circuit)) % 2 ** 31, 7])
             self.center = line
             inner, outer = _offset_walls(line, width, rng)
+        elif getattr(self, "narrow", False):
+            self.center, inner, outer = make_narrow_track(seed)
         else:
             self.center, inner, outer = make_track(seed)
         self.blobs = make_obstacles(
@@ -752,7 +822,7 @@ class F1TenthEnv(gym.Env):
         # 이걸 최대화하면 평균 속도가 최대화되고 곧 랩타임이 줄어든다.
         advance = delta * self.step_length
         short = max(0.0, self.margin_start - (clearance - BODY_RADIUS))
-        tight = short / self.margin_start
+        tight = (short / self.margin_start) ** self.margin_power
         if self.multiply_penalty:
             # 급변할 때만 걸리는 문턱. 평소에는 0 에 가까워 묻히지 않는다.
             rough = 1.0 / (1.0 + np.exp(-SHAKE_SHARP * (shake - self.shake_gate)))

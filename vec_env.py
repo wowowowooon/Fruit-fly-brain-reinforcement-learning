@@ -25,7 +25,8 @@ class _Slot:
     """작업자 하나가 맡는 환경 하나. 환경 + 인코더 + 센서 손상."""
 
     def __init__(self, beams, lidar_range, seed, randomize, rivals=0.0,
-                 passage=PASSAGE_MIN, reward=None, motion=3, real_tracks=0.0):
+                 passage=PASSAGE_MIN, reward=None, motion=3, real_tracks=0.0,
+                 narrow=0.0):
         # 상대 차를 쓸 때만 움직이는 환경을 쓴다. 안 쓰면 예전과 똑같다.
         maker = MovingObstacleEnv if rivals > 0.0 else F1TenthEnv
         extra = {"rival_pace": TRAIN_RIVAL_PACE} if rivals > 0.0 else {}
@@ -38,6 +39,8 @@ class _Slot:
         # 섞어서 그 구멍을 메운다.
         self.real_names = track_names() if real_tracks > 0.0 else []
         self.real_share = float(real_tracks) if self.real_names else 0.0
+        # 대회를 닮은 좁은 지그재그 트랙을 섞을 비율.
+        self.narrow_share = float(narrow)
         self.motion = int(motion)
         self.encoder = LidarEncoder(beams, lidar_range=lidar_range)
         self.rng = np.random.default_rng(seed)
@@ -50,13 +53,18 @@ class _Slot:
         self.reset()
 
     def reset(self):
-        if self.real_share:
-            # 트랙 종류만 바꿔 끼운다. 환경 객체는 그대로 두어야
-            # 상대 차 설정과 rng 가 유지된다.
-            use_real = self.rng.random() < self.real_share
+        # 트랙 종류만 바꿔 끼운다. 환경 객체는 그대로 두어야 상대 차
+        # 설정과 rng 가 유지된다. 셋을 섞는다.
+        #   생성 트랙   다양한 모양
+        #   실제 서킷   진짜 F1 코스. 급코너 반경이 우리보다 급하다
+        #   지그재그    대회 모양. 좁고 길쭉하고 급코너가 촘촘하다
+        if self.real_share or self.narrow_share:
+            roll = self.rng.random()
             self.env.circuit = (
                 self.real_names[int(self.rng.integers(len(self.real_names)))]
-                if use_real else None)
+                if roll < self.real_share else None)
+            self.env.narrow = (
+                self.real_share <= roll < self.real_share + self.narrow_share)
         if self.rivals > 0.0:
             # 매 판 상대 차 수를 새로 뽑는다. 없는 판도 섞여야 한다.
             self.env.rival_count = (
@@ -94,10 +102,11 @@ class _Slot:
 
 
 def _worker(pipe, beams, lidar_range, seeds, randomize, rivals=0.0,
-            passage=PASSAGE_MIN, reward=None, motion=3, real_tracks=0.0):
+            passage=PASSAGE_MIN, reward=None, motion=3, real_tracks=0.0,
+            narrow=0.0):
     """작업자 프로세스. 맡은 환경들을 굴리고 39채널 값만 돌려준다."""
     slots = [_Slot(beams, lidar_range, s, randomize, rivals, passage,
-                   reward, motion, real_tracks) for s in seeds]
+                   reward, motion, real_tracks, narrow) for s in seeds]
     pipe.send(np.stack([slot.reset() for slot in slots]))
     try:
         while True:
@@ -129,7 +138,7 @@ class ParallelRunner:
 
     def __init__(self, n_envs, beams, lidar_range, workers=None,
                  seed=0, randomize=True, rivals=0.0, passage=PASSAGE_MIN,
-                 reward=None, motion=3, real_tracks=0.0):
+                 reward=None, motion=3, real_tracks=0.0, narrow=0.0):
         workers = workers or min(8, max(1, n_envs // 2))
         groups = np.array_split(np.arange(n_envs), workers)
         groups = [g for g in groups if len(g)]
@@ -142,7 +151,8 @@ class ParallelRunner:
             proc = context.Process(
                 target=_worker,
                 args=(child, beams, lidar_range, seeds, randomize,
-                      rivals, passage, reward, motion, real_tracks),
+                      rivals, passage, reward, motion, real_tracks,
+                      narrow),
                 daemon=True,
             )
             proc.start()

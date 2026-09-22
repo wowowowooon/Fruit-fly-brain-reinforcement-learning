@@ -75,14 +75,18 @@ def collect(args, rng, log=print):
     encoder = LidarEncoder(args.beams, lidar_range=args.lidar_range)
     episodes = []
     circuits = track_names()[:getattr(args, "circuits", 0)]
-    bar = Progress(args.tracks + len(circuits), "수집", log)
+    narrow = int(getattr(args, "narrow", 0))
+    bar = Progress(args.tracks + len(circuits) + narrow, "수집", log)
     dropped = 0
 
-    for track in range(args.tracks + len(circuits)):
-        # 앞쪽은 우리가 만든 트랙, 뒤쪽은 실제 서킷.
-        env.circuit = (circuits[track - args.tracks]
-                       if track >= args.tracks else None)
-        obs, _ = env.reset(seed=track if track < args.tracks else 0)
+    for track in range(args.tracks + len(circuits) + narrow):
+        # 생성 트랙 -> 실제 서킷 -> 대회를 닮은 지그재그, 순서대로 돈다.
+        in_circuit = args.tracks <= track < args.tracks + len(circuits)
+        env.circuit = circuits[track - args.tracks] if in_circuit else None
+        env.narrow = track >= args.tracks + len(circuits)
+        seed = track if track < args.tracks else (
+            900 + track - args.tracks - len(circuits) if env.narrow else 0)
+        obs, _ = env.reset(seed=seed)
         encoder.reset()
         # 교사는 차를 레이싱 라인 위로 옮긴다. 옮긴 뒤의 관측을 다시 읽어야 한다.
         racer = make_teacher(args, env)
@@ -155,6 +159,7 @@ def _recipe(args):
         "pace": list(TRAIN_RIVAL_PACE),
         "motion": int(getattr(args, "motion", 3)),
         "circuits": int(getattr(args, "circuits", 0)),
+        "narrow": int(getattr(args, "narrow", 0)),
         "noise": float(NOISE),
     }
 
@@ -296,7 +301,9 @@ def main():
     parser.add_argument("--motion", type=int, default=3,
                         help="관측의 운동 채널 수. 6 이면 조향각과 직전 행동 포함")
     parser.add_argument("--circuits", type=int, default=0,
-                        help="실제 서킷을 몇 개나 수집에 넣을지 (0~22)")
+                        help="실제 서킷을 몇 개나 수집에 넣을지 (0~23)")
+    parser.add_argument("--narrow", type=int, default=0,
+                        help="대회를 닮은 지그재그 트랙을 몇 개나 넣을지")
     parser.add_argument("--cache", type=str, default=None,
                         help="교사 시범을 모아 둘 파일(.npz). 조건이 같으면 "
                              "다음부터 수집을 건너뛴다")

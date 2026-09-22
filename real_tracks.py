@@ -20,31 +20,52 @@ Monza, Silverstone, Catalunya 등 26개가 있고, 각 폴더의 중심선 CSV �
   env = F1TenthEnv(circuit="Monza")
 """
 
+import json
 import pathlib
 
 import numpy as np
 
 from f1tenth_sim import _resample
+from paths import DATA
 
 ROOT = pathlib.Path(r"C:\Users\woong\Desktop\f1tenth_racetracks")
 POINTS = 600            # 중심선을 몇 점으로 다시 찍을지. 트랙이 길어서 넉넉히.
+
+
+def _stem(name):
+    """폴더 이름과 파일 이름이 다른 경우가 있다.
+
+    폴더 "Mexico City" 안의 파일은 "MexicoCity_centerline.csv" 다.
+    폴더 이름 그대로 찾으면 이 트랙 하나가 조용히 빠진다. 하필
+    2026 대회 코스와 닮은 순위 5위다.
+    """
+    return name.replace(" ", "")
 
 
 def track_names(root=ROOT):
     """쓸 수 있는 트랙 이름들."""
     if not pathlib.Path(root).exists():
         return []
-    return sorted(d.name for d in pathlib.Path(root).iterdir()
-                  if (d / f"{d.name}_centerline.csv").exists())
+    return sorted(
+        d.name for d in pathlib.Path(root).iterdir()
+        if d.is_dir() and (d / f"{_stem(d.name)}_centerline.csv").exists())
+
+
+# 중심선 CSV 는 통로 폭을 23개 트랙 전부 2.20m 로 적어 두었다. 거짓이다.
+# 실제 지도에서 재면 1.43~2.55m 로 제각각이고, Montreal 은 1.43m 라
+# CSV 를 믿으면 56% 넓게 — 즉 실제보다 쉽게 만들게 된다.
+_WIDTHS = json.loads((DATA / "real_track_widths.json").read_text(encoding="utf-8"))     if (DATA / "real_track_widths.json").exists() else {}
 
 
 def load_centerline(name, root=ROOT, points=POINTS, scale=1.0):
     """중심선과 통로 폭을 읽는다. scale 로 트랙 전체 크기를 조절한다."""
-    path = pathlib.Path(root) / name / f"{name}_centerline.csv"
+    path = pathlib.Path(root) / name / f"{_stem(name)}_centerline.csv"
     table = np.loadtxt(path, delimiter=",", skiprows=1)
     line = _resample(table[:, :2] * scale, points)
-    width = float(np.median(table[:, 2] + table[:, 3])) * scale
-    return line, width
+    width = _WIDTHS.get(name)
+    if width is None:                       # 못 재 둔 트랙은 CSV 값을 쓴다
+        width = float(np.median(table[:, 2] + table[:, 3]))
+    return line, float(width) * scale
 
 
 # 환경에서 쓰는 법:
