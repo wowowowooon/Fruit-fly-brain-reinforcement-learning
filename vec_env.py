@@ -14,6 +14,7 @@ import numpy as np
 from f1tenth_sim import PASSAGE_MIN, F1TenthEnv
 from fly_driver import N_MOTION, FEATURE_LIMIT, LidarEncoder
 from moving_obstacles import TRAIN_RIVAL_PACE, MovingObstacleEnv
+from real_tracks import track_names
 from sensor_noise import DomainRandomizer
 
 TRACK_POOL = 400          # 이만큼의 서로 다른 트랙에서 뽑아 쓴다
@@ -24,12 +25,20 @@ class _Slot:
     """작업자 하나가 맡는 환경 하나. 환경 + 인코더 + 센서 손상."""
 
     def __init__(self, beams, lidar_range, seed, randomize, rivals=0.0,
-                 passage=PASSAGE_MIN, reward=None):
+                 passage=PASSAGE_MIN, reward=None, motion=3, real_tracks=0.0):
         # 상대 차를 쓸 때만 움직이는 환경을 쓴다. 안 쓰면 예전과 똑같다.
         maker = MovingObstacleEnv if rivals > 0.0 else F1TenthEnv
         extra = {"rival_pace": TRAIN_RIVAL_PACE} if rivals > 0.0 else {}
-        self.env = maker(n_beams=beams, lidar_range=lidar_range,
-                         passage=passage, **extra, **(reward or {}))
+        self.settings = dict(n_beams=beams, lidar_range=lidar_range,
+                             passage=passage, motion=motion,
+                             **extra, **(reward or {}))
+        self.env = maker(**self.settings)
+        # 우리가 만드는 트랙은 모양이 한정돼 있다. 2026 대회 코스는
+        # 가로세로비 3.42 라 학습 분포(최대 2.91) 밖이다. 실제 서킷을
+        # 섞어서 그 구멍을 메운다.
+        self.real_names = track_names() if real_tracks > 0.0 else []
+        self.real_share = float(real_tracks) if self.real_names else 0.0
+        self.motion = int(motion)
         self.encoder = LidarEncoder(beams, lidar_range=lidar_range)
         self.rng = np.random.default_rng(seed)
         self.rivals = float(rivals)
@@ -41,6 +50,13 @@ class _Slot:
         self.reset()
 
     def reset(self):
+        if self.real_share:
+            # 트랙 종류만 바꿔 끼운다. 환경 객체는 그대로 두어야
+            # 상대 차 설정과 rng 가 유지된다.
+            use_real = self.rng.random() < self.real_share
+            self.env.circuit = (
+                self.real_names[int(self.rng.integers(len(self.real_names)))]
+                if use_real else None)
         if self.rivals > 0.0:
             # 매 판 상대 차 수를 새로 뽑는다. 없는 판도 섞여야 한다.
             self.env.rival_count = (
@@ -54,9 +70,11 @@ class _Slot:
         return self._features(raw)
 
     def _features(self, raw):
-        return self.encoder.raw(
-            raw[:-N_MOTION] * self.env.lidar_range,
-            raw[-N_MOTION:], self.env.dt)
+        # 운동 채널 수는 환경 설정을 따라야 한다. 3 으로 박아 두면
+        # motion=6 일 때 라이다 끝 세 칸을 운동 값으로 착각한다.
+        n = self.motion
+        return self.encoder.raw(raw[:-n] * self.env.lidar_range,
+                                raw[-n:], self.env.dt)
 
     def step(self, action):
         raw, reward, done, truncated, info = self.env.step(action)
@@ -76,10 +94,10 @@ class _Slot:
 
 
 def _worker(pipe, beams, lidar_range, seeds, randomize, rivals=0.0,
-            passage=PASSAGE_MIN, reward=None):
+            passage=PASSAGE_MIN, reward=None, motion=3, real_tracks=0.0):
     """작업자 프로세스. 맡은 환경들을 굴리고 39채널 값만 돌려준다."""
-    slots = [_Slot(beams, lidar_range, s, randomize, rivals, passage, reward)
-             for s in seeds]
+    slots = [_Slot(beams, lidar_range, s, randomize, rivals, passage,
+                   reward, motion, real_tracks) for s in seeds]
     pipe.send(np.stack([slot.reset() for slot in slots]))
     try:
         while True:
@@ -111,7 +129,7 @@ class ParallelRunner:
 
     def __init__(self, n_envs, beams, lidar_range, workers=None,
                  seed=0, randomize=True, rivals=0.0, passage=PASSAGE_MIN,
-                 reward=None):
+                 reward=None, motion=3, real_tracks=0.0):
         workers = workers or min(8, max(1, n_envs // 2))
         groups = np.array_split(np.arange(n_envs), workers)
         groups = [g for g in groups if len(g)]
@@ -124,7 +142,7 @@ class ParallelRunner:
             proc = context.Process(
                 target=_worker,
                 args=(child, beams, lidar_range, seeds, randomize,
-                      rivals, passage, reward),
+                      rivals, passage, reward, motion, real_tracks),
                 daemon=True,
             )
             proc.start()

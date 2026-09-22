@@ -31,8 +31,14 @@ LOOM_LIMIT = 4.0
 FEATURE_LIMIT = 5.0
 
 
-def sensor_channels(n_sectors=N_SECTORS):
-    """컨트롤러에 들어갈 입력 채널 목록. (이름, 종류, 반구, 구역)"""
+def sensor_channels(n_sectors=N_SECTORS, motion=None):
+    """컨트롤러에 들어갈 입력 채널 목록. (이름, 종류, 반구, 구역)
+
+    motion 은 라이다 뒤에 붙는 자기 상태 채널 수다.
+      3 = 속도, 각속도, 가속도                   (B·C·R 안)
+      4 = + 현재 조향각
+      6 = + 직전 조향 명령, 직전 속도 명령        (T안)
+    """
     channels = []
     for side in ("L", "R"):
         for sector in range(n_sectors):
@@ -40,9 +46,9 @@ def sensor_channels(n_sectors=N_SECTORS):
             channels.append((f"loom_{side}{sector}", "loom", side, sector))
     # 자기 움직임(IMU). 초파리에서 HS/LPT 광역 세포가 하는 일이 바로
     # "내가 지금 얼마나 돌고 있나"를 읽는 것이다. 자이로가 재는 값과 같다.
-    channels.append(("speed", "speed", "both", None))
-    channels.append(("yaw_rate", "speed", "both", None))
-    channels.append(("accel", "speed", "both", None))
+    names = ["speed", "yaw_rate", "accel", "steer", "last_steer", "last_drive"]
+    for name in names[:motion if motion else N_MOTION]:
+        channels.append((name, "speed", "both", None))
     return channels
 
 
@@ -186,11 +192,13 @@ class FlyDriver:
     name = "초파리 배선 (CfC)"
 
     def __init__(self, n_beams=LIDAR_BEAMS, device="cpu",
-                 lidar_range=LIDAR_RANGE, dt=CONTROL_DT, fly_wiring=True):
+                 lidar_range=LIDAR_RANGE, dt=CONTROL_DT, fly_wiring=True,
+                 motion=N_MOTION):
         neurons = pd.read_csv(DATA / "subcircuit_neurons.csv")
         connections = pd.read_csv(DATA / "subcircuit_connections.csv")
 
-        self.channels = sensor_channels()
+        self.motion = int(motion)
+        self.channels = sensor_channels(motion=self.motion)
         self.wiring, self.ordered, self.info = build_wiring(
             neurons, connections, self.channels, N_SECTORS,
             position=load_eye_position(),
@@ -233,6 +241,7 @@ class FlyDriver:
             "std": self.encoder.std,
             "lidar_range": self.lidar_range,
             "n_sectors": N_SECTORS,
+            "motion": self.motion,
             "dt": self.dt,
             # 어떤 배선으로 학습된 모델인지. 섞이면 비교가 무의미해진다.
             "fly_wiring": self.fly_wiring,
@@ -251,6 +260,13 @@ class FlyDriver:
                 f"{'초파리' if trained_wiring else '밀집'}로 학습됐는데 "
                 f"{'초파리' if self.fly_wiring else '밀집'}로 불러오려 합니다."
             )
+        trained_motion = bundle.get("motion", bundle.get("n_motion"))
+        if trained_motion is not None and int(trained_motion) != self.motion:
+            raise RuntimeError(
+                f"관측 채널이 다른 모델입니다. 파일은 운동 {trained_motion}채널로 "
+                f"학습됐는데 {self.motion}채널로 불러오려 합니다. "
+                f"FlyDriver(motion={trained_motion}) 로 만드세요."
+            )
         self.model.load_state_dict(bundle["model"])
         if bundle["mean"] is not None:
             self.encoder.set_stats(bundle["mean"], bundle["std"])
@@ -264,8 +280,8 @@ class FlyDriver:
 
     @torch.no_grad()
     def act(self, obs):
-        scan = obs[:-N_MOTION] * self.lidar_range
-        features = self.encoder.encode(scan, obs[-N_MOTION:], self.dt)
+        scan = obs[:-self.motion] * self.lidar_range
+        features = self.encoder.encode(scan, obs[-self.motion:], self.dt)
         self.last_features = features
         x = torch.from_numpy(features).view(1, 1, -1).to(self.device)
         command, self.hidden = self.model(x, self.hidden)

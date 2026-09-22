@@ -120,7 +120,12 @@ class Runner:
         return stats
 
 
-def gae(rewards, values, dones, last_value):
+# CAPS 공간적 항에서 관측을 얼마나 흔들어 볼지.
+# 정규화된 관측 기준이라 0.1 이면 1/10 시그마만큼 흔드는 것이다.
+CAPS_SIGMA = 0.1
+
+
+def gae(rewards, values, dones, last_value, gamma=GAMMA, lam=LAMBDA):
     """지금 행동이 평균보다 얼마나 좋았는지 (이득)."""
     steps = len(rewards)
     advantages = np.zeros_like(rewards)
@@ -128,8 +133,8 @@ def gae(rewards, values, dones, last_value):
     for t in reversed(range(steps)):
         nxt = last_value if t == steps - 1 else values[t + 1]
         alive = 1.0 - dones[t]
-        delta = rewards[t] + GAMMA * nxt * alive - values[t]
-        running = delta + GAMMA * LAMBDA * alive * running
+        delta = rewards[t] + gamma * nxt * alive - values[t]
+        running = delta + gamma * lam * alive * running
         advantages[t] = running
     return advantages, advantages + values
 
@@ -171,11 +176,29 @@ def rollout(runner, policy, hidden, stats, steps):
 
 
 def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
-           hold_polarity=None,
-           teacher=None):
-    """모은 조각으로 정책을 민다. 시간 순서를 지켜야 기억이 맞는다."""
+           hold_polarity=None, teacher=None,
+           caps_time=0.0, caps_space=0.0, caps_sigma=CAPS_SIGMA,
+           clip=CLIP, gamma=GAMMA, lam=LAMBDA):
+    """모은 조각으로 정책을 민다. 시간 순서를 지켜야 기억이 맞는다.
+
+    CAPS (Mysore et al., ICRA 2021) 두 항을 같이 민다. 보상에 벌점으로
+    넣으면 다른 항에 묻히지만(흔들림 벌점 3배를 올려도 떨림이 2% 밖에
+    안 줄었다), 손실에 직접 걸면 정책이 바로 밀린다.
+
+      시간적  연속한 두 스텝의 행동이 비슷하게
+      공간적  비슷한 상태면 비슷한 행동을 내게
+
+    공간적 항이 핵심이다. 우리는 학습 중 라이다에 잡음을 넣는데(도메인
+    랜덤화) 정책이 그 잡음에 그대로 반응하면 조향 떨림이 된다. 관측을
+    조금 흔들어도 행동이 안 바뀌게 만드는 것이 바로 그 처방이다.
+
+    논문 보고: 같은 PPO 에서 떨림 지표 43.9 -> 5.92 (86% 감소).
+    단, 1/18 스케일 레이싱카 연구(I-RAS)는 CAPS 를 세게 걸면 정책이
+    지나치게 뻣뻣해져 코너를 못 돈다고 지적한다. 세기는 재서 고른다.
+    """
     advantages, returns = gae(
-        batch["rewards"], batch["values"], batch["dones"], batch["last_value"]
+        batch["rewards"], batch["values"], batch["dones"], batch["last_value"],
+        gamma=gamma, lam=lam,
     )
     norm = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -206,12 +229,27 @@ def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
         if hidden is not None:
             hidden = hidden.detach()
         policy_loss = value_loss = entropy_sum = anchor_loss = 0.0
+        time_loss = space_loss = 0.0
+        previous = None
         for t in range(steps):
+            before = hidden
             logp, entropy, value, mean, hidden = policy.evaluate(
                 obs[t].unsqueeze(1), hidden, acts[t].unsqueeze(1)
             )
+            if caps_time > 0.0 and previous is not None:
+                # 에피소드가 끊긴 자리는 빼야 한다. 다른 트랙의 첫 행동과
+                # 이전 트랙의 마지막 행동을 비교하면 뜻이 없다.
+                keep = alive[t - 1]
+                time_loss = time_loss + (
+                    (mean[:, 0] - previous) * keep).pow(2).mean()
+            if caps_space > 0.0:
+                noisy = obs[t] + torch.randn_like(obs[t]) * caps_sigma
+                near, _, _ = policy(noisy.unsqueeze(1), before)
+                space_loss = space_loss + (
+                    mean[:, 0] - near[:, 0]).pow(2).mean()
+            previous = mean[:, 0]
             ratio = (logp[:, 0] - old_logps[t]).exp()
-            clipped = torch.clamp(ratio, 1 - CLIP, 1 + CLIP)
+            clipped = torch.clamp(ratio, 1 - clip, 1 + clip)
             policy_loss = policy_loss - torch.min(
                 ratio * adv[t], clipped * adv[t]
             ).mean()
@@ -224,7 +262,8 @@ def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
             hidden = hidden * alive[t]
 
         loss = (policy_loss + VALUE_COEF * value_loss
-                - entropy_coef * entropy_sum + anchor * anchor_loss) / steps
+                - entropy_coef * entropy_sum + anchor * anchor_loss
+                + caps_time * time_loss + caps_space * space_loss) / steps
         optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(policy.parameters(), MAX_GRAD)
@@ -235,6 +274,34 @@ def update(policy, optimizer, batch, epochs, entropy_coef, anchor=0.0,
         losses.append(float(loss.detach()))
 
     return float(np.mean(losses))
+
+
+# 모델 선택에만 쓰는 트랙. 학습(0~399), 모방학습 시험(600~604),
+# 최종 평가(700~744) 어디와도 안 겹친다.
+VALID_SEEDS = tuple(range(500, 512))
+
+
+def validate(driver, args, seeds=VALID_SEEDS):
+    """고정된 트랙에서 탐색 없이 달려 본다. 이 점수로만 모델을 고른다."""
+    from f1tenth_sim import F1TenthEnv
+    done, laps, lengths = 0, [], []
+    for seed in seeds:
+        env = F1TenthEnv(n_beams=args.beams, lidar_range=args.lidar_range,
+                         track_seed=seed, motion=args.motion, friction=1.0)
+        obs, _ = env.reset(seed=seed)
+        driver.reset()
+        info = {"progress": 0.0}
+        for step in range(3000):
+            obs, _, crashed, timeout, info = env.step(driver.act(obs))
+            if crashed or timeout:
+                break
+        if info["progress"] > 0.97:
+            done += 1
+            laps.append((step + 1) * env.dt)
+            lengths.append(env.lap_length)
+    rate = done / len(seeds)
+    speed = float(np.mean([l / t for l, t in zip(lengths, laps)])) if laps else 0.0
+    return rate, speed
 
 
 def _snapshot(driver, policy, args, iteration, name):
@@ -249,6 +316,8 @@ def _snapshot(driver, policy, args, iteration, name):
         "lidar_range": args.lidar_range, "dt": CONTROL_DT,
         "log_std": policy.log_std.detach(),
         "trained_beams": args.beams,
+        "motion": driver.motion,
+        "fly_wiring": driver.fly_wiring,
         "iteration": iteration,
         # 이어서 학습할 때 쓸 것들
         "critic": policy.critic.state_dict(),
@@ -291,6 +360,25 @@ def main():
                         help="조향을 급하게 꺾을 때의 벌점 (0~1 정규화)")
     parser.add_argument("--margin-penalty", type=float, default=MARGIN_PENALTY,
                         help="벽·장애물에 바짝 붙었을 때의 벌점 (0~1 정규화)")
+    parser.add_argument("--multiply-penalty", action="store_true",
+                        help="벌점을 전진 보상에 곱한다. 더하면 묻힌다")
+    parser.add_argument("--crash-speed", type=float, default=0.0,
+                        help="충돌 벌점에 속도 제곱을 이만큼 곱해 더한다")
+    parser.add_argument("--motion", type=int, default=3,
+                        help="관측의 운동 채널 수. 6 이면 조향각과 직전 행동 포함")
+    parser.add_argument("--caps-time", type=float, default=0.0,
+                        help="CAPS 시간적 항 — 연속한 두 스텝의 행동 차이를 줄인다")
+    parser.add_argument("--caps-space", type=float, default=0.0,
+                        help="CAPS 공간적 항 — 비슷한 상태면 비슷한 행동을 내게")
+    parser.add_argument("--caps-sigma", type=float, default=CAPS_SIGMA,
+                        help="공간적 항에서 관측을 흔들 크기")
+    parser.add_argument("--real-tracks", type=float, default=0.0,
+                        help="실제 서킷을 쓸 확률 (0~1)")
+    parser.add_argument("--valid-every", type=int, default=50,
+                        help="몇 회마다 고정 검증 트랙에서 재고 모델을 고를지")
+    parser.add_argument("--clip", type=float, default=CLIP)
+    parser.add_argument("--gae", type=float, default=LAMBDA)
+    parser.add_argument("--gamma", type=float, default=GAMMA)
     args = parser.parse_args()
 
     torch.manual_seed(0)
@@ -305,7 +393,7 @@ def main():
     log("=" * 68)
 
     driver = FlyDriver(n_beams=args.beams, lidar_range=args.lidar_range,
-                       fly_wiring=not args.dense)
+                       fly_wiring=not args.dense, motion=args.motion)
     if model_path(args.init).exists():
         driver.load(args.init)
         log(f"출발점: {args.init} (모방학습 결과)")
@@ -352,17 +440,26 @@ def main():
     runner = ParallelRunner(args.envs, args.beams, args.lidar_range,
                             workers=workers, randomize=not args.no_noise,
                             rivals=args.rivals, passage=args.passage,
+                            motion=args.motion, real_tracks=args.real_tracks,
                             reward={
                                 "crash_penalty": args.crash_penalty,
                                 "shake_penalty": args.shake_penalty,
                                 "margin_penalty": args.margin_penalty,
+                                "multiply_penalty": args.multiply_penalty,
+                                "crash_speed": args.crash_speed,
                             })
     log(f"동시에 굴리는 트랙 {args.envs}개 "
         f"(프로세스 {workers}개, 토치 스레드 {torch.get_num_threads()}개)")
     log(f"한 번에 {args.steps}스텝")
     log(f"센서 손상 {'끔' if args.no_noise else '켬 (도메인 랜덤화)'}")
     log(f"장애물 옆 통로 {args.passage:.2f}m")
-    log(f"보상  전진거리 + 충돌 -{args.crash_penalty:g}"
+    if args.caps_time or args.caps_space:
+        log(f"CAPS  시간적 {args.caps_time:g}  공간적 {args.caps_space:g}"
+            f"  (관측 흔들기 {args.caps_sigma:g})")
+    if args.real_tracks:
+        log(f"실제 서킷 {args.real_tracks:.0%} 확률로 사용")
+    log(f"보상  {'곱셈' if args.multiply_penalty else '덧셈'} 합성. "
+        f"전진거리 + 충돌 -{args.crash_penalty:g}"
         f"{f' + 흔들림 -{args.shake_penalty:g}' if args.shake_penalty else ''}"
         f"{f' + 여유 -{args.margin_penalty:g}' if args.margin_penalty else ''}")
     log(f"움직이는 상대 차 "
@@ -382,7 +479,10 @@ def main():
             pull = anchor_weight(it, args.iters) * (args.anchor / ANCHOR_COEF)
         loss = update(policy, optimizer, batch, args.epochs, args.entropy,
                       anchor=pull, teacher=anchor_teacher,
-                      hold_polarity=driver.hold_polarity)
+                      hold_polarity=driver.hold_polarity,
+                      caps_time=args.caps_time, caps_space=args.caps_space,
+                      caps_sigma=args.caps_sigma,
+                      clip=args.clip, gamma=args.gamma, lam=args.gae)
 
         finished = runner.drain()
         history.extend(finished)
@@ -393,8 +493,15 @@ def main():
             rate = len(laps) / len(history)
             speed = np.mean([h["length"] / h["lap_time"] for h in laps]) if laps else 0
             note += f"  완주 {rate:>5.0%}  평균속도 {speed:>4.1f}m/s"
-            score = rate * 100 + speed
-            if score > best and rate > 0.5:
+        # 모델은 '고정 검증 트랙' 점수로만 고른다. 학습 중 이동평균은
+        # 흔들려서 운 좋은 구간이 박제된다.
+        if it % args.valid_every == 0 or it == args.iters:
+            driver.model.eval()
+            v_rate, v_speed = validate(driver, args)
+            driver.model.train()
+            score = v_rate * 100 + v_speed
+            note += f"  검증 {v_rate:>4.0%} {v_speed:.1f}m/s"
+            if score > best:
                 best = score
                 _snapshot(driver, policy, args, it, args.out)
                 note += " 저장"

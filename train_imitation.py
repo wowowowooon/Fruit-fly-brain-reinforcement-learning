@@ -24,6 +24,7 @@ from f1tenth_sim import (CONTROL_DT, LIDAR_BEAMS, LIDAR_RANGE, PASSAGE_MIN,
                          F1TenthEnv)
 from fly_driver import N_MOTION, FlyDriver, LidarEncoder
 from moving_obstacles import TRAIN_RIVAL_PACE, MovingObstacleEnv
+from real_tracks import track_names
 from progress import Logger, Progress
 from raceline import StanleyRacer
 from racing_teacher import RacingTeacher
@@ -42,16 +43,15 @@ COLLECT_LAPS = 2      # 한 트랙에서 도는 바퀴 수. 레이싱 라인 계
 
 def make_env(args, laps=1):
     """상대 차를 쓸 때만 움직이는 환경. 안 쓰면 예전과 똑같다."""
+    common = dict(n_beams=args.beams, dt=CONTROL_DT,
+                  lidar_range=args.lidar_range, laps=laps,
+                  passage=getattr(args, "passage", PASSAGE_MIN),
+                  motion=getattr(args, "motion", 3))
     rivals = getattr(args, "rivals", 0)
-    passage = getattr(args, "passage", PASSAGE_MIN)
     if rivals > 0:
-        return MovingObstacleEnv(n_beams=args.beams, dt=CONTROL_DT,
-                                 lidar_range=args.lidar_range, laps=laps,
-                                 passage=passage, rivals=rivals,
-                                 rival_pace=TRAIN_RIVAL_PACE)
-    return F1TenthEnv(n_beams=args.beams, dt=CONTROL_DT,
-                      lidar_range=args.lidar_range, laps=laps,
-                      passage=passage)
+        return MovingObstacleEnv(rivals=rivals,
+                                 rival_pace=TRAIN_RIVAL_PACE, **common)
+    return F1TenthEnv(**common)
 
 
 def make_teacher(args, env):
@@ -74,11 +74,15 @@ def collect(args, rng, log=print):
     env = make_env(args, laps=COLLECT_LAPS)
     encoder = LidarEncoder(args.beams, lidar_range=args.lidar_range)
     episodes = []
-    bar = Progress(args.tracks, "수집", log)
+    circuits = track_names()[:getattr(args, "circuits", 0)]
+    bar = Progress(args.tracks + len(circuits), "수집", log)
     dropped = 0
 
-    for track in range(args.tracks):
-        obs, _ = env.reset(seed=track)
+    for track in range(args.tracks + len(circuits)):
+        # 앞쪽은 우리가 만든 트랙, 뒤쪽은 실제 서킷.
+        env.circuit = (circuits[track - args.tracks]
+                       if track >= args.tracks else None)
+        obs, _ = env.reset(seed=track if track < args.tracks else 0)
         encoder.reset()
         # 교사는 차를 레이싱 라인 위로 옮긴다. 옮긴 뒤의 관측을 다시 읽어야 한다.
         racer = make_teacher(args, env)
@@ -87,12 +91,12 @@ def collect(args, rng, log=print):
         info = {"crashed": False}
 
         for _ in range(EPISODE_STEPS):
-            scan = obs[:-N_MOTION] * env.lidar_range
+            scan = obs[:-env.motion] * env.lidar_range
             action = (racer.act(env.pos, env.yaw, env.speed,
                                 env.rival_states(), env.dt)
                       if hasattr(env, "rival_states")
                       else racer.act(env.pos, env.yaw, env.speed))
-            features.append(encoder.raw(scan, obs[-N_MOTION:], env.dt))
+            features.append(encoder.raw(scan, obs[-env.motion:], env.dt))
             labels.append(action.copy())
 
             noisy = np.clip(action + rng.normal(0, NOISE, 2), -1, 1)
@@ -149,6 +153,8 @@ def _recipe(args):
         "passage": float(getattr(args, "passage", PASSAGE_MIN)),
         "laps": int(COLLECT_LAPS),
         "pace": list(TRAIN_RIVAL_PACE),
+        "motion": int(getattr(args, "motion", 3)),
+        "circuits": int(getattr(args, "circuits", 0)),
         "noise": float(NOISE),
     }
 
@@ -206,8 +212,8 @@ def dagger(driver, args, rng, tracks, start, log=print):
         info = {"crashed": False}
 
         for _ in range(EPISODE_STEPS):
-            scan = obs[:-N_MOTION] * env.lidar_range
-            features.append(encoder.raw(scan, obs[-N_MOTION:], env.dt))
+            scan = obs[:-env.motion] * env.lidar_range
+            features.append(encoder.raw(scan, obs[-env.motion:], env.dt))
             labels.append((racer.act(env.pos, env.yaw, env.speed,
                                      env.rival_states(), env.dt)
                            if hasattr(env, "rival_states")
@@ -287,6 +293,10 @@ def main():
                         help="학생을 달리게 해서 교사 정답을 붙이는 라운드 수")
     parser.add_argument("--dagger-tracks", type=int, default=60,
                         help="DAgger 한 라운드에 쓸 트랙 수")
+    parser.add_argument("--motion", type=int, default=3,
+                        help="관측의 운동 채널 수. 6 이면 조향각과 직전 행동 포함")
+    parser.add_argument("--circuits", type=int, default=0,
+                        help="실제 서킷을 몇 개나 수집에 넣을지 (0~22)")
     parser.add_argument("--cache", type=str, default=None,
                         help="교사 시범을 모아 둘 파일(.npz). 조건이 같으면 "
                              "다음부터 수집을 건너뛴다")
@@ -330,7 +340,7 @@ def main():
     log(f"상수로 찍었을 때 오차 {baseline:.4f} (이보다 낮아야 배운 것)\n")
 
     driver = FlyDriver(n_beams=args.beams, lidar_range=args.lidar_range,
-                       fly_wiring=not args.dense)
+                       fly_wiring=not args.dense, motion=args.motion)
     driver.encoder.set_stats(mean, std)
     log(driver.summary())
     log("")

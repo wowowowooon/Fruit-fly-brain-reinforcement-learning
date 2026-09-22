@@ -16,16 +16,15 @@ Monza, Silverstone, Catalunya 등 26개가 있고, 각 폴더의 중심선 CSV �
 지도 그림(.png)은 못 쓴다. 흰 배경에 벽선만 그려 둔 것이라 트랙 밖도
 전부 '주행 가능' 으로 잡힌다. CSV 만 쓴다.
 
-  from real_tracks import RealTrackEnv, track_names
-  env = RealTrackEnv("Monza")
+  from real_tracks import track_names
+  env = F1TenthEnv(circuit="Monza")
 """
 
 import pathlib
 
 import numpy as np
 
-from f1tenth_sim import (F1TenthEnv, PASSAGE_MIN, _offset_walls, _resample,
-                         as_segments, make_obstacles)
+from f1tenth_sim import _resample
 
 ROOT = pathlib.Path(r"C:\Users\woong\Desktop\f1tenth_racetracks")
 POINTS = 600            # 중심선을 몇 점으로 다시 찍을지. 트랙이 길어서 넉넉히.
@@ -48,45 +47,8 @@ def load_centerline(name, root=ROOT, points=POINTS, scale=1.0):
     return line, width
 
 
-class RealTrackEnv(F1TenthEnv):
-    """실제 서킷 하나를 트랙으로 쓰는 환경.
-
-    시드 대신 트랙 이름으로 고른다. 장애물은 똑같이 놓을 수 있다.
-    """
-
-    def __init__(self, name, *args, scale=1.0, rough=True, **kwargs):
-        self.track_name = name
-        self.track_scale = scale
-        self.rough_walls = rough
-        super().__init__(*args, **kwargs)
-
-    def _load_track(self, seed):
-        line, width = load_centerline(self.track_name, points=POINTS,
-                                      scale=self.track_scale)
-        rng = np.random.default_rng([abs(hash(self.track_name)) % 2**31, 7])
-        inner, outer = _offset_walls(line, width,
-                                     rng if self.rough_walls else None)
-        self.center = line
-        self.blobs = make_obstacles(
-            seed, self.center, width,
-            passage=getattr(self, "passage", PASSAGE_MIN),
-        ) if getattr(self, "obstacles", True) else []
-
-        starts, ends = [], []
-        for loop in [inner, outer] + self.blobs:
-            a, b = as_segments(loop)
-            starts.append(a)
-            ends.append(b)
-        self.seg_a = np.concatenate(starts)
-        self.seg_b = np.concatenate(ends)
-        self.inner, self.outer = inner, outer
-
-        steps = np.linalg.norm(np.roll(self.center, -1, axis=0) - self.center,
-                               axis=1)
-        self.step_length = float(steps.mean())
-        self.lap_length = float(steps.sum())
-        self.track_width = float(width)
-        self.seg_mid = (self.seg_a + self.seg_b) / 2
-        self.seg_reach = (
-            np.linalg.norm(self.seg_b - self.seg_a, axis=1) / 2 + self.lidar_range
-        )
+# 환경에서 쓰는 법:
+#   F1TenthEnv(circuit="Monza")            정지 장애물만
+#   MovingObstacleEnv(circuit="Monza")     상대 차까지
+# 트랙을 어디서 읽을지는 F1TenthEnv 가 정한다. 여기서 따로 환경을 만들면
+# 상대 차 환경과 안 섞인다.

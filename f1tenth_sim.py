@@ -81,6 +81,17 @@ SHAKE_PENALTY = 0.0     # 조향 흔들림 벌점. 0이면 끔
 MARGIN_PENALTY = 0.0    # 여유 부족 벌점. 0이면 끔
 MARGIN_START = 0.20     # 이보다 가까워지면 벌점이 붙기 시작한다 [m]
 
+# 벌점을 전진 보상에 '곱한다'. 더하면 묻힌다 — 흔들림 벌점을 3배로 올려도
+# 떨림이 2% 밖에 안 줄었다. 곱하면 벌점이 클수록 전진 보상 자체가 깎인다.
+MULTIPLY_PENALTY = False   # True 면 곱셈 합성. 기본은 예전 그대로(덧셈)
+# 조향이 '급변할 때만' 때린다. 평소에 늘 걸리면 상수처럼 보여 무시된다.
+# shake 는 서보 속도 한계 대비 비율(0~1) 이다. R안의 평균이 0.74 였다.
+SHAKE_GATE = 0.50       # 이 위로 넘어갈 때부터 벌점이 붙는다
+SHAKE_SHARP = 8.0       # 문턱을 얼마나 날카롭게 넘길지
+# 충돌 벌점을 속도 제곱에 비례해 더한다. 빠를 때 박으면 더 아프게.
+# GT Sport 논문이 쓰는 방식(운동에너지 비례).
+CRASH_SPEED = 0.0       # [s^2/m^2] 0 이면 끔. 0.5 면 7m/s 충돌에 +24.5
+
 # --- 제어 지연 ---
 # 라이다 측정 -> 계산 -> VESC -> 모터까지 실제로 시간이 걸린다.
 # 넣지 않고 학습하면 실차에서 핸들이 떨린다(oscillation).
@@ -503,7 +514,9 @@ class F1TenthEnv(gym.Env):
                  passage=PASSAGE_MIN, motion=3, steer_mode="angle",
                  crash_penalty=CRASH_PENALTY,
                  shake_penalty=SHAKE_PENALTY, margin_penalty=MARGIN_PENALTY,
-                 margin_start=MARGIN_START, friction=None):
+                 margin_start=MARGIN_START, friction=None,
+                 multiply_penalty=MULTIPLY_PENALTY, shake_gate=SHAKE_GATE,
+                 crash_speed=CRASH_SPEED, circuit=None):
         super().__init__()
         # 장애물을 끄면 같은 트랙을 장애물만 빼고 다시 달릴 수 있다.
         # 회피 실력과 순수 주행 실력을 갈라 보려면 이 짝 비교가 필요하다.
@@ -514,13 +527,24 @@ class F1TenthEnv(gym.Env):
         self.shake_penalty = shake_penalty
         self.margin_penalty = margin_penalty
         self.margin_start = margin_start
+        self.multiply_penalty = bool(multiply_penalty)
+        self.shake_gate = float(shake_gate)
+        self.crash_speed = float(crash_speed)
+        # 실제 서킷 이름(Monza 등)을 주면 시드로 만드는 대신 그것을 쓴다.
+        # 우리가 만드는 트랙은 모양이 한정돼 있는데, 2026 대회 코스는
+        # 가로세로비 3.42 로 학습 분포(최대 2.91) 밖이다.
+        self.circuit = circuit
         # 노면 마찰. None 이면 매 판 무작위(학습용), 값을 주면 고정(실험용).
         self.friction = friction
-        # 관측에 붙는 자기 움직임 채널 수.
-        #   3 = 속도, 각속도, 가속도            (B·C·R 안이 쓴 것)
-        #   4 = 위 + 현재 조향각                (T안)
-        # 조향각을 모르면 '조향 각속도' 를 낼 수가 없다. 얼마나 더 돌릴지는
-        # 지금 얼마나 꺾여 있는지를 알아야 정해진다.
+        # 관측에 붙는 자기 움직임 채널 수. 순서는 고정이다.
+        #   [0] 속도  [1] 각속도  [2] 가속도        3 = B·C·R 안이 쓴 것
+        #   [3] 현재 조향각                        4
+        #   [4] 직전 조향 명령  [5] 직전 속도 명령   6 = T안
+        #
+        # 직전 행동을 넣는 이유: 행동이 급변하는 것을 벌하려면 정책이 '직전에
+        # 무엇을 냈는지' 를 알아야 한다. 모르면 상태에 숨은 변수가 생겨
+        # 마르코프 가정이 깨지고, CAPS 논문은 이 경우 "학습이 파국적으로
+        # 실패한다" 고 보고한다.
         self.motion = int(motion)
         # 행동[0] 의 뜻.
         #   "angle" = 목표 조향각 (-1~1 이 좌우 최대)
@@ -547,7 +571,14 @@ class F1TenthEnv(gym.Env):
         self._load_track(track_seed)
 
     def _load_track(self, seed):
-        self.center, inner, outer = make_track(seed)
+        if getattr(self, "circuit", None):
+            from real_tracks import load_centerline
+            line, width = load_centerline(self.circuit)
+            rng = np.random.default_rng([abs(hash(self.circuit)) % 2 ** 31, 7])
+            self.center = line
+            inner, outer = _offset_walls(line, width, rng)
+        else:
+            self.center, inner, outer = make_track(seed)
         self.blobs = make_obstacles(
             seed, self.center,
             np.linalg.norm(outer - inner, axis=1).mean(),
@@ -609,7 +640,10 @@ class F1TenthEnv(gym.Env):
                   self.accel / MAX_ACCEL]
         if self.motion >= 4:
             motion.append(self.steer / MAX_STEER)
-        return np.concatenate([scan / self.lidar_range, motion]).astype(np.float32)
+        if self.motion >= 6:
+            motion.extend(self.last_action)
+        return np.concatenate([scan / self.lidar_range,
+                               motion[:self.motion]]).astype(np.float32)
 
     def _progress(self):
         """중심선 위 어디쯤 왔는지 (0~1)."""
@@ -649,6 +683,8 @@ class F1TenthEnv(gym.Env):
         # (50ms 로 설정해 두고 실제로는 25ms 만 지연되고 있었다).
         # popleft 로 꺼내므로 길이는 저절로 유지된다.
         self.queued = deque([np.array([0.0, -1.0])] * self.latency_steps)
+        # 관측에 넣을 직전 행동. 출발할 때는 '가만히' 로 둔다.
+        self.last_action = [0.0, -1.0]
 
         scan = self._scan()
         return self._observe(scan), {}
@@ -656,6 +692,10 @@ class F1TenthEnv(gym.Env):
     def step(self, action):
         # 지금 낸 명령은 줄 뒤에 서고, 앞에 있던 명령이 지금 먹는다.
         action = np.asarray(action, dtype=np.float64)
+        # 관측에는 '방금 낸 명령' 을 넣는다. 지연 대기열에서 꺼낸 것이 아니라
+        # 정책이 직전에 고른 값이어야 행동 급변을 스스로 볼 수 있다.
+        self.last_action = [float(np.clip(action[0], -1, 1)),
+                            float(np.clip(action[1], -1, 1))]
         if self.latency_steps > 0:
             self.queued.append(action)
             action = self.queued.popleft()
@@ -711,17 +751,22 @@ class F1TenthEnv(gym.Env):
         # 트랙을 따라 나아간 거리(m). 스텝 시간이 고정이므로
         # 이걸 최대화하면 평균 속도가 최대화되고 곧 랩타임이 줄어든다.
         advance = delta * self.step_length
-        reward = advance
+        short = max(0.0, self.margin_start - (clearance - BODY_RADIUS))
+        tight = short / self.margin_start
+        if self.multiply_penalty:
+            # 급변할 때만 걸리는 문턱. 평소에는 0 에 가까워 묻히지 않는다.
+            rough = 1.0 / (1.0 + np.exp(-SHAKE_SHARP * (shake - self.shake_gate)))
+            gain = 1.0 - self.shake_penalty * rough - self.margin_penalty * tight
+            reward = advance * max(gain, 0.0)
+        else:
+            reward = advance
+            if self.shake_penalty:
+                reward -= self.shake_penalty * shake
+            if self.margin_penalty:
+                reward -= self.margin_penalty * tight
         if self.crashed:
-            reward -= self.crash_penalty
-        # 흔들림: 실차에서 핸들이 떨리는 것을 막는다.
-        if self.shake_penalty:
-            reward -= self.shake_penalty * shake
-        # 여유: 벽이나 장애물에 바짝 붙었을 때만. 레이싱 라인은 코너 안쪽을
-        # 쓰는 것이 정상이라 시작 지점을 낮게 잡아 apex 를 막지 않는다.
-        if self.margin_penalty:
-            short = max(0.0, self.margin_start - (clearance - BODY_RADIUS))
-            reward -= self.margin_penalty * short / self.margin_start
+            # 빠를 때 박으면 더 아프게. 운동에너지에 비례한다.
+            reward -= self.crash_penalty + self.crash_speed * self.speed ** 2
 
         done = self.crashed or self.lap_progress >= step_count * self.laps
         truncated = self.steps >= self.max_steps
