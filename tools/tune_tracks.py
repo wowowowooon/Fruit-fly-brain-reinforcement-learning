@@ -14,9 +14,9 @@ import argparse
 
 import numpy as np
 
-import f1tenth_sim as S
-from f1tenth_sim import F1TenthEnv
-from raceline import StanleyRacer, outer_half_width, path_curvature
+import flyracer.sim.f1tenth_sim as S
+from flyracer.sim.f1tenth_sim import F1TenthEnv
+from flyracer.drive.raceline import StanleyRacer, outer_half_width, path_curvature
 
 
 def drive(env, seeds, steps=6000):
@@ -57,7 +57,7 @@ def line_safety(env, seeds):
     for seed in seeds:
         env.reset(seed=seed)
         racer = StanleyRacer.for_env(env)
-        from raceline import _closest_on_walls
+        from flyracer.drive.raceline import _closest_on_walls
         _, gap = _closest_on_walls(racer.line, env.seg_a, env.seg_b)
         need = outer_half_width(
             1.0 / np.maximum(np.abs(path_curvature(racer.line)), 1e-6))

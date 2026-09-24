@@ -6,12 +6,12 @@ from pathlib import Path
 # 상위 폴더에 있는 공통 모듈을 찾을 수 있게 한다
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from paths import OUTPUTS
+from flyracer.paths import OUTPUTS
 
 import numpy as np
 from PIL import Image
 
-from f1tenth_sim import F1TenthEnv
+from flyracer.sim.f1tenth_sim import F1TenthEnv
 
 env = F1TenthEnv(n_beams=108)
 obs, info = env.reset()

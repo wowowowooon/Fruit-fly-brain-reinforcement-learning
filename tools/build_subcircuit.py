@@ -10,7 +10,7 @@ from pathlib import Path
 # 상위 폴더에 있는 공통 모듈을 찾을 수 있게 한다
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from paths import DATA
+from flyracer.paths import DATA
 
 import networkx as nx
 import pandas as pd

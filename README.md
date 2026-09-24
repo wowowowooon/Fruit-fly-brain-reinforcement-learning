@@ -10,85 +10,86 @@
 
 ```
 fly_brain_test/
+├── flyracer/      핵심 코드 (패키지). 서로를 불러 쓴다
+│   ├── sim/         시뮬레이터, 트랙, 장애물, 센서
+│   ├── brain/       초파리 배선과 신경망
+│   ├── drive/       주행 알고리즘 (레이싱 라인, 교사, 고전)
+│   ├── paths.py     파일 위치 모음
+│   └── progress.py  진행 막대 + 로그
+├── train/         학습 (모방 → 강화)
+├── evaluate/      성적 재기
+├── view/          눈으로 보기
+├── scripts/       진행 상황 보기, 체크포인트 모으기
+├── tools/         데이터 만들기·성능 재기 (가끔)
+├── archive/       다 쓴 1회성 스크립트 (참고용)
 ├── data/          커넥톰 데이터 (뉴런·연결·시야 위치)
 ├── models/        학습된 가중치 (.pt) 와 성적표 (.json)
 ├── outputs/       그림, 주행 궤적, 실험 결과
-├── logs/          학습·실험 로그
-├── experiments/   평가와 실험 (가끔 실행)
-├── tools/         데이터 만들기·성능 재기 (가끔 실행)
-├── archive/       다 쓴 1회성 스크립트 (참고용)
-└── *.py           핵심 코드 + 자주 쓰는 도구
+└── logs/          학습·실험 로그
 ```
 
-### 핵심 코드 (루트)
+`flyracer/` 만 패키지입니다. 나머지 폴더는 실행하는 스크립트들이고,
+각자 맨 위에서 저장소 뿌리를 `sys.path` 에 넣어 `flyracer` 를 찾습니다.
 
-서로를 불러 쓰기 때문에 한 폴더에 둡니다.
-
-**시뮬레이터**
+### flyracer/sim — 시뮬레이터
 
 | 파일 | 하는 일 |
 |---|---|
 | `f1tenth_sim.py` | 차 물리, 라이다·IMU, 트랙 생성. 타이어·서보 한계 |
 | `track_map.py` | 대회 맵(.png+.yaml) 읽기, 맵에서 중심선 뽑기 |
+| `map_start.py` | 맵 위 출발 자세 찾기, 한 바퀴 궤적 따기 |
+| `map_hazards.py` | 대회 코스에 정지 장애물·상대 차 얹기 |
+| `moving_obstacles.py` | 움직이는 상대 차 |
+| `real_tracks.py` | F1TENTH 공개 서킷 22개 읽기 |
 | `sensor_noise.py` | 센서 잡음·고장 흉내 (학습 중 랜덤화 + 실험) |
 | `vec_env.py` | 여러 대를 동시에 굴리는 환경 |
 
-**초파리 회로**
+### flyracer/brain — 초파리 회로
 
 | 파일 | 하는 일 |
 |---|---|
 | `build_wiring.py` | 커넥톰 CSV → 학습 가능한 회로. 배선·극성 적용 |
 | `fly_driver.py` | 라이다·IMU 를 읽고 조향·속도를 냄. 배선 검사 포함 |
+| `racing_policy.py` | PPO 정책·가치 머리 |
 | `standard_net.py` | 비교용 일반 신경망 (A안) |
 
-**주행 제어**
+### flyracer/drive — 주행 제어
 
 | 파일 | 하는 일 |
 |---|---|
-| `raceline.py` | 교사 — 최소곡률 라인 + Stanley 추종 |
+| `raceline.py` | 최소곡률 라인 + Stanley 추종 |
+| `racing_teacher.py` | 교사 — 코리도 DP + 속도 계획 + 회피 |
 | `controllers.py` | 고전 방식 (Follow the Gap, 순수추종) — 비교 기준 |
-| `racing_policy.py` | PPO 정책·가치 머리 |
-
-**학습**
-
-| 파일 | 하는 일 |
-|---|---|
-| `train_imitation.py` | 1단계 — 교사 따라하기 |
-| `train_rl.py` | 2단계 — 스스로 배우기 (PPO) |
-| `progress.py` | 진행 막대 + 로그 |
-
-**보기·공통**
-
-| 파일 | 하는 일 |
-|---|---|
-| `viewer.py` | 눈으로 보는 뷰어 |
-| `render_map_run.py` | 주행 궤적을 그림으로 |
-| `test_on_map.py` | 실제 맵에서 달려 보기, 출발 자세 찾기 |
-| `paths.py` | 파일 위치 모음 |
-| `watch.ps1` | 학습 진행 상황 보기 |
-| `watch_experiment.ps1` | 실험 진행 상황 보기 |
 
 ### 자주 쓰는 명령
 
+모델마다 관측 채널 수가 다릅니다. **`--motion` 을 꼭 맞춰야 합니다.**
+T안은 6, R·B·C안은 3입니다. 틀리면 조용히 어긋나거나 터집니다.
+
 ```powershell
-# 눈으로 보기 (대회 코스)
-.\.venv\Scripts\python.exe viewer.py --model C_fly871.pt --map "...\ifac_roboracer.yaml"
+# 눈으로 보기 (대회 코스, 장애물 6개 + 상대 차 2대, 끌 때까지 계속)
+.\.venv\Scripts\python.exe view\viewer.py --model T_fly871_final.pt --motion 6 `
+  --map "C:\Users\woong\Desktop\ifac_roboracer_maps\ifac_roboracer.yaml" `
+  --obstacles 6 --rivals 2
 
-# 성적 재기 (처음 보는 시드 45개 + 대회 코스)
-.\.venv\Scripts\python.exe experiments\evaluate.py C_fly871.pt --tracks 45
+# 대회 코스 한 바퀴, 숫자로
+.\.venv\Scripts\python.exe view\test_on_map.py "...\ifac_roboracer.yaml" `
+  --model T_fly871_final.pt --motion 6
 
-# 센서 고장 견딤
-.\.venv\Scripts\python.exe experiments\experiment_faults.py C_fly871.pt
+# 회피 장면 세 컷을 그림으로
+.\.venv\Scripts\python.exe view\race_avoid.py --model T_fly871_final.pt --motion 6
 
-# 한 스텝 판단 시간
-.\.venv\Scripts\python.exe experiments\experiment_speed.py
+# 성적 재기
+.\.venv\Scripts\python.exe evaluate\evaluate.py T_fly871_final.pt --tracks 45 --motion 6
+.\.venv\Scripts\python.exe evaluate\experiment_faults.py T_fly871_final.pt --motion 6
+.\.venv\Scripts\python.exe evaluate\race_robust.py --model T_fly871_final.pt --motion 6
 
 # 학습
-.\.venv\Scripts\python.exe train_imitation.py --out C_fly871.pt
-.\.venv\Scripts\python.exe train_rl.py --iters 2500 --init C_fly871_imit.pt --out C_fly871.pt
+.\.venv\Scripts\python.exe train\train_imitation.py --out T_fly871.pt --motion 6
+.\.venv\Scripts\python.exe train\train_rl.py --iters 3000 --init AB_mid.pt --motion 6 --out T_fly871.pt
 ```
 
-경로는 `paths.py` 를 거칩니다. 폴더를 옮겨도 거기만 고치면 됩니다.
+파일 위치는 `flyracer/paths.py` 를 거칩니다. 폴더를 옮겨도 거기만 고치면 됩니다.
 
 ---
 

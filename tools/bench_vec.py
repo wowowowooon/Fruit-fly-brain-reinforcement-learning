@@ -14,9 +14,9 @@ import time
 import numpy as np
 import torch
 
-from fly_driver import FlyDriver
-from racing_policy import RacingPolicy
-from vec_env import ParallelRunner
+from flyracer.brain.fly_driver import FlyDriver
+from flyracer.brain.racing_policy import RacingPolicy
+from flyracer.sim.vec_env import ParallelRunner
 
 
 def measure(n_envs, workers, threads, policy, stats, steps=40):

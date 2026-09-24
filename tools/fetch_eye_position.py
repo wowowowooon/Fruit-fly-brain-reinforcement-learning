@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 from neuprint import Client
 
-from paths import DATA
+from flyracer.paths import DATA
 
 # 가지(입력)가 뻗어 있는 곳이 그 세포가 보는 방향이다.
 # 로불라(LO)와 로불라판(LOP)이 시야 배열을 유지하는 곳.

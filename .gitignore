@@ -25,5 +25,5 @@ logs/
 
 # 실험 결과물 - 다시 돌리면 나온다
 outputs/
-experiments/__pycache__/
+evaluate/__pycache__/
 *.npz

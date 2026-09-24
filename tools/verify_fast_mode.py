@@ -17,9 +17,9 @@ import time
 
 import numpy as np
 
-from controllers import follow_the_gap
-from f1tenth_sim import LIDAR_BEAMS, F1TenthEnv
-from fly_driver import N_MOTION, LidarEncoder
+from flyracer.drive.controllers import follow_the_gap
+from flyracer.sim.f1tenth_sim import LIDAR_BEAMS, F1TenthEnv
+from flyracer.brain.fly_driver import N_MOTION, LidarEncoder
 
 CANDIDATES = (108, 271, 541)
 
