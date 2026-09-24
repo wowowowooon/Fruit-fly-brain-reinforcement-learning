@@ -1,0 +1,17 @@
+{
+  "model": "R_fly871_v1_keep.pt",
+  "normal_counts": [
+    44,
+    42
+  ],
+  "normal_mean": 43.0,
+  "normal_std": 1.0,
+  "normal_lap": 15.36104651162791,
+  "shake": 0.10423584021509309,
+  "gap_p10": 0.08619385548230568,
+  "narrow_done": 11,
+  "narrow_total": 12,
+  "race_done": true,
+  "race_lap": 9.5,
+  "race_gap": 0.23245726716577328
+}

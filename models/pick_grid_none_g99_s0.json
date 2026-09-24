@@ -1,0 +1,17 @@
+{
+  "model": "grid_none_g99_s0.pt",
+  "normal_counts": [
+    42,
+    41
+  ],
+  "normal_mean": 41.5,
+  "normal_std": 0.5,
+  "normal_lap": 15.545180722891565,
+  "shake": 0.09286873471691831,
+  "gap_p10": 0.011493848924628495,
+  "narrow_done": 11,
+  "narrow_total": 12,
+  "race_done": true,
+  "race_lap": 9.25,
+  "race_gap": 0.24106521271650663
+}

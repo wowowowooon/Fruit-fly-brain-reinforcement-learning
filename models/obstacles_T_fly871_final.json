@@ -1,0 +1,353 @@
+{
+  "model": "T_fly871_final.pt",
+  "wiring": "fly",
+  "tracks": 20,
+  "tracks_with_obstacles": 8,
+  "bare_completed": 8,
+  "full_completed": 8,
+  "lost_to_obstacles": 0,
+  "lap_cost": 0.6687500000000001,
+  "seconds": 254.01069569587708,
+  "runs": [
+    {
+      "seed": 700,
+      "width": 1.7333839863110883,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 36.45,
+        "speed": 5.704112448521973
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 36.45,
+        "speed": 5.704112448521973
+      }
+    },
+    {
+      "seed": 701,
+      "width": 1.740302143361225,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.975000000000001,
+        "speed": 6.223302110648609
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.975000000000001,
+        "speed": 6.223302110648609
+      }
+    },
+    {
+      "seed": 702,
+      "width": 1.7032336665966679,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.325000000000001,
+        "speed": 6.338235087762256
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.325000000000001,
+        "speed": 6.338235087762256
+      }
+    },
+    {
+      "seed": 703,
+      "width": 2.970622019446152,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0025,
+        "lap_time": 6.1000000000000005,
+        "speed": 6.166786351861035
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0025,
+        "lap_time": 6.1000000000000005,
+        "speed": 6.166786351861035
+      }
+    },
+    {
+      "seed": 704,
+      "width": 2.3621330766113227,
+      "obstacles": 3,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.375,
+        "speed": 6.616888225186955
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.175,
+        "speed": 5.9170697834309856
+      }
+    },
+    {
+      "seed": 705,
+      "width": 3.3631097201910323,
+      "obstacles": 3,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.5,
+        "speed": 6.73133039330614
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.75,
+        "speed": 6.669991184513448
+      }
+    },
+    {
+      "seed": 706,
+      "width": 1.7708446039679058,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 6.45,
+        "speed": 5.409983880970944
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 6.45,
+        "speed": 5.409983880970944
+      }
+    },
+    {
+      "seed": 707,
+      "width": 2.7269374253128613,
+      "obstacles": 2,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 11.75,
+        "speed": 6.603683995401605
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 11.975000000000001,
+        "speed": 6.497091036873222
+      }
+    },
+    {
+      "seed": 708,
+      "width": 1.7416360201772678,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 6.275,
+        "speed": 5.7864393090703095
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 6.275,
+        "speed": 5.7864393090703095
+      }
+    },
+    {
+      "seed": 709,
+      "width": 3.1069648270454424,
+      "obstacles": 1,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.100000000000001,
+        "speed": 6.654154283674896
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.450000000000001,
+        "speed": 6.5059509482556965
+      }
+    },
+    {
+      "seed": 710,
+      "width": 1.709427864177501,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0025,
+        "lap_time": 7.9750000000000005,
+        "speed": 5.963860030962755
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0025,
+        "lap_time": 7.9750000000000005,
+        "speed": 5.963860030962755
+      }
+    },
+    {
+      "seed": 711,
+      "width": 1.935248516650682,
+      "obstacles": 1,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 9.8,
+        "speed": 6.170506393076964
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.4,
+        "speed": 5.818564075059614
+      }
+    },
+    {
+      "seed": 712,
+      "width": 1.7050602895827454,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.775000000000002,
+        "speed": 5.799882958572431
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.775000000000002,
+        "speed": 5.799882958572431
+      }
+    },
+    {
+      "seed": 713,
+      "width": 1.6995734081847207,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 22.5,
+        "speed": 5.477164571602827
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 22.5,
+        "speed": 5.477164571602827
+      }
+    },
+    {
+      "seed": 714,
+      "width": 1.7206107840739395,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.525,
+        "speed": 6.219809315500858
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.525,
+        "speed": 6.219809315500858
+      }
+    },
+    {
+      "seed": 715,
+      "width": 1.706878042757246,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 8.475,
+        "speed": 6.182584156038837
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 8.475,
+        "speed": 6.182584156038837
+      }
+    },
+    {
+      "seed": 716,
+      "width": 1.7821644289815213,
+      "obstacles": 0,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.825000000000001,
+        "speed": 6.269636417254401
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.825000000000001,
+        "speed": 6.269636417254401
+      }
+    },
+    {
+      "seed": 717,
+      "width": 3.175380997424018,
+      "obstacles": 3,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 7.825,
+        "speed": 6.413002106042716
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 8.275,
+        "speed": 6.0315149656010165
+      }
+    },
+    {
+      "seed": 718,
+      "width": 2.13925425515897,
+      "obstacles": 2,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.075000000000001,
+        "speed": 6.499458370302192
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.25,
+        "speed": 5.977898933793368
+      }
+    },
+    {
+      "seed": 719,
+      "width": 2.307004485295672,
+      "obstacles": 3,
+      "bare": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.475,
+        "speed": 6.305689209168409
+      },
+      "full": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.975,
+        "speed": 6.171918360493898
+      }
+    }
+  ]
+}

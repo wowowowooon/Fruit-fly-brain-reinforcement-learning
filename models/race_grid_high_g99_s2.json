@@ -1,0 +1,59 @@
+{
+  "model": "grid_high_g99_s2.pt",
+  "runs": [
+    {
+      "grip": 0.75,
+      "done": true,
+      "lap": 9.225,
+      "progress": 1.0,
+      "gap": 0.20364556867971048
+    },
+    {
+      "grip": 0.82,
+      "done": true,
+      "lap": 9.175,
+      "progress": 1.0,
+      "gap": 0.2051388594129083
+    },
+    {
+      "grip": 0.88,
+      "done": true,
+      "lap": 9.125,
+      "progress": 1.0,
+      "gap": 0.1942757557041966
+    },
+    {
+      "grip": 0.95,
+      "done": true,
+      "lap": 9.025,
+      "progress": 1.0,
+      "gap": 0.20023030449586574
+    },
+    {
+      "grip": 1.02,
+      "done": true,
+      "lap": 9.15,
+      "progress": 1.0,
+      "gap": 0.183336519238436
+    },
+    {
+      "grip": 1.08,
+      "done": true,
+      "lap": 8.925,
+      "progress": 1.001953125,
+      "gap": 0.24801142830985898
+    },
+    {
+      "grip": 1.15,
+      "done": true,
+      "lap": 8.875,
+      "progress": 1.0,
+      "gap": 0.2512615131291328
+    }
+  ],
+  "done": 7,
+  "total": 7,
+  "lap": 9.071428571428571,
+  "worst_lap": 9.225,
+  "gap": 0.183336519238436
+}

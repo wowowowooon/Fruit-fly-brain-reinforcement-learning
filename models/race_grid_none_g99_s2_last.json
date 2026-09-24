@@ -1,0 +1,59 @@
+{
+  "model": "grid_none_g99_s2_last.pt",
+  "runs": [
+    {
+      "grip": 0.75,
+      "done": false,
+      "lap": 4.375,
+      "progress": 0.41796875,
+      "gap": -0.005840590602071483
+    },
+    {
+      "grip": 0.82,
+      "done": false,
+      "lap": 4.25,
+      "progress": 0.416015625,
+      "gap": -0.07259793738078976
+    },
+    {
+      "grip": 0.88,
+      "done": true,
+      "lap": 9.275,
+      "progress": 1.0,
+      "gap": 0.13403459024690098
+    },
+    {
+      "grip": 0.95,
+      "done": true,
+      "lap": 9.025,
+      "progress": 1.0,
+      "gap": 0.14618394790730546
+    },
+    {
+      "grip": 1.02,
+      "done": false,
+      "lap": 6.875,
+      "progress": 0.75,
+      "gap": -0.010661291226772812
+    },
+    {
+      "grip": 1.08,
+      "done": true,
+      "lap": 9.3,
+      "progress": 1.0,
+      "gap": 0.1220652044000756
+    },
+    {
+      "grip": 1.15,
+      "done": true,
+      "lap": 9.15,
+      "progress": 1.0,
+      "gap": 0.13086945840321787
+    }
+  ],
+  "done": 4,
+  "total": 7,
+  "lap": 9.1875,
+  "worst_lap": 9.3,
+  "gap": -0.07259793738078976
+}

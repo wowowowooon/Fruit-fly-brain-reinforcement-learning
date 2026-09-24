@@ -1,0 +1,17 @@
+{
+  "model": "T_cand_it0100.pt",
+  "normal_counts": [
+    45,
+    45
+  ],
+  "normal_mean": 45.0,
+  "normal_std": 0.0,
+  "normal_lap": 16.961666666666666,
+  "shake": 0.03598798602842608,
+  "gap_p10": 0.0758147076877777,
+  "narrow_done": 11,
+  "narrow_total": 12,
+  "race_done": true,
+  "race_lap": 10.700000000000001,
+  "race_gap": 0.19235171008706628
+}

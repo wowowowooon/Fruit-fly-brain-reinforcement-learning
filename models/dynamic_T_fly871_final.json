@@ -1,0 +1,869 @@
+{
+  "model": "T_fly871_final.pt",
+  "wiring": "fly",
+  "tracks": 45,
+  "tracks_with_rivals": 45,
+  "still_completed": 45,
+  "moving_completed": 40,
+  "lost_to_rivals": 5,
+  "hit_rival": 7,
+  "lap_cost": 1.9887500000000002,
+  "seconds": 609.8199439048767,
+  "runs": [
+    {
+      "seed": 700,
+      "width": 1.7333839863110883,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 36.45,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 39.900000000000006,
+        "hit_rival": false,
+        "closest": 0.2155738007237497
+      }
+    },
+    {
+      "seed": 701,
+      "width": 1.740302143361225,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.975000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 20.1,
+        "hit_rival": true,
+        "closest": 0.1479135939123072
+      }
+    },
+    {
+      "seed": 702,
+      "width": 1.7032336665966679,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.325000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 18.625,
+        "hit_rival": false,
+        "closest": 0.6200435240657645
+      }
+    },
+    {
+      "seed": 703,
+      "width": 2.970622019446152,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0025,
+        "lap_time": 6.1000000000000005,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": false,
+        "progress": 0.93,
+        "lap_time": 6.175000000000001,
+        "hit_rival": true,
+        "closest": 0.09913322138693886
+      }
+    },
+    {
+      "seed": 704,
+      "width": 2.3621330766113227,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.175,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 15.325000000000001,
+        "hit_rival": false,
+        "closest": 0.32124692003431676
+      }
+    },
+    {
+      "seed": 705,
+      "width": 3.3631097201910323,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.75,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.8,
+        "hit_rival": false,
+        "closest": 0.563780825368057
+      }
+    },
+    {
+      "seed": 706,
+      "width": 1.7708446039679058,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 6.45,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 9.025,
+        "hit_rival": false,
+        "closest": 0.27008390491283446
+      }
+    },
+    {
+      "seed": 707,
+      "width": 2.7269374253128613,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 11.975000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.125,
+        "hit_rival": false,
+        "closest": 0.48898836024988707
+      }
+    },
+    {
+      "seed": 708,
+      "width": 1.7416360201772678,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 6.275,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 7.525,
+        "hit_rival": false,
+        "closest": 0.3422586077601222
+      }
+    },
+    {
+      "seed": 709,
+      "width": 3.1069648270454424,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.450000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.425,
+        "hit_rival": false,
+        "closest": 0.5386577266933117
+      }
+    },
+    {
+      "seed": 710,
+      "width": 1.709427864177501,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0025,
+        "lap_time": 7.9750000000000005,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 9.775,
+        "hit_rival": false,
+        "closest": 0.2609026139228732
+      }
+    },
+    {
+      "seed": 711,
+      "width": 1.935248516650682,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.4,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.05,
+        "hit_rival": false,
+        "closest": 0.3988234719199893
+      }
+    },
+    {
+      "seed": 712,
+      "width": 1.7050602895827454,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.775000000000002,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 30.325000000000003,
+        "hit_rival": false,
+        "closest": 0.3204790366895716
+      }
+    },
+    {
+      "seed": 713,
+      "width": 1.6995734081847207,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 22.5,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 25.3,
+        "hit_rival": false,
+        "closest": 0.3592694499742057
+      }
+    },
+    {
+      "seed": 714,
+      "width": 1.7206107840739395,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.525,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": false,
+        "progress": 0.59,
+        "lap_time": 10.075000000000001,
+        "hit_rival": true,
+        "closest": 0.14558804515783874
+      }
+    },
+    {
+      "seed": 715,
+      "width": 1.706878042757246,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 8.475,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 11.825000000000001,
+        "hit_rival": false,
+        "closest": 0.20658373333952665
+      }
+    },
+    {
+      "seed": 716,
+      "width": 1.7821644289815213,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.825000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.975000000000001,
+        "hit_rival": false,
+        "closest": 0.3566170036943116
+      }
+    },
+    {
+      "seed": 717,
+      "width": 3.175380997424018,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 8.275,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 8.75,
+        "hit_rival": false,
+        "closest": 0.46537038761292043
+      }
+    },
+    {
+      "seed": 718,
+      "width": 2.13925425515897,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.25,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 15.425,
+        "hit_rival": false,
+        "closest": 0.3785717647112898
+      }
+    },
+    {
+      "seed": 719,
+      "width": 2.307004485295672,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.975,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 25.375,
+        "hit_rival": false,
+        "closest": 0.5512380113803717
+      }
+    },
+    {
+      "seed": 720,
+      "width": 3.7342808006361707,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.8,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.9,
+        "hit_rival": false,
+        "closest": 0.8264118468122702
+      }
+    },
+    {
+      "seed": 721,
+      "width": 1.7832872506902004,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.975000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 18.0,
+        "hit_rival": false,
+        "closest": 0.2695965298361814
+      }
+    },
+    {
+      "seed": 722,
+      "width": 3.260796122710202,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.325000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.450000000000001,
+        "hit_rival": false,
+        "closest": 0.19867800851261547
+      }
+    },
+    {
+      "seed": 723,
+      "width": 2.0450685902569954,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.3,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 24.125,
+        "hit_rival": false,
+        "closest": 0.27066134715818324
+      }
+    },
+    {
+      "seed": 724,
+      "width": 2.2294353287189534,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 15.3,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 15.525,
+        "hit_rival": false,
+        "closest": 0.4205513452549291
+      }
+    },
+    {
+      "seed": 725,
+      "width": 3.589072709295051,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 11.700000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 11.850000000000001,
+        "hit_rival": false,
+        "closest": 0.3784562371794747
+      }
+    },
+    {
+      "seed": 726,
+      "width": 2.268649804354334,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.65,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.950000000000001,
+        "hit_rival": false,
+        "closest": 0.18264793499397552
+      }
+    },
+    {
+      "seed": 727,
+      "width": 3.0254196675409584,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.125,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.625,
+        "hit_rival": false,
+        "closest": 0.2527755818042554
+      }
+    },
+    {
+      "seed": 728,
+      "width": 1.8959948864044585,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.450000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.425,
+        "hit_rival": false,
+        "closest": 0.4550021921311601
+      }
+    },
+    {
+      "seed": 729,
+      "width": 3.3677207056871827,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 21.975,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 22.05,
+        "hit_rival": false,
+        "closest": 0.24324382792732074
+      }
+    },
+    {
+      "seed": 730,
+      "width": 1.7177352619709045,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 26.900000000000002,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": false,
+        "progress": 0.6525,
+        "lap_time": 21.125,
+        "hit_rival": true,
+        "closest": 0.13677175734077313
+      }
+    },
+    {
+      "seed": 731,
+      "width": 1.7092928203351385,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 22.400000000000002,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 24.6,
+        "hit_rival": false,
+        "closest": 0.17844498372160386
+      }
+    },
+    {
+      "seed": 732,
+      "width": 2.10252855382253,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 29.950000000000003,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 32.675000000000004,
+        "hit_rival": false,
+        "closest": 0.20695532327180743
+      }
+    },
+    {
+      "seed": 733,
+      "width": 3.0837900209766986,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.850000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.075000000000001,
+        "hit_rival": false,
+        "closest": 0.4429034813991915
+      }
+    },
+    {
+      "seed": 734,
+      "width": 3.7170369982045504,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.3,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 0.9775,
+        "lap_time": 10.325000000000001,
+        "hit_rival": true,
+        "closest": 0.06073616885728784
+      }
+    },
+    {
+      "seed": 735,
+      "width": 1.7342426639267863,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 25.325000000000003,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": false,
+        "progress": 0.6125,
+        "lap_time": 15.75,
+        "hit_rival": true,
+        "closest": 0.13168028420826233
+      }
+    },
+    {
+      "seed": 736,
+      "width": 1.8867290810702448,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 13.4,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 16.725,
+        "hit_rival": false,
+        "closest": 0.2878752953605977
+      }
+    },
+    {
+      "seed": 737,
+      "width": 1.7581329813611168,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 9.3,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 11.525,
+        "hit_rival": false,
+        "closest": 0.2761004868615284
+      }
+    },
+    {
+      "seed": 738,
+      "width": 1.7610856957707666,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 9.825000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 15.025,
+        "hit_rival": false,
+        "closest": 0.3197331538439503
+      }
+    },
+    {
+      "seed": 739,
+      "width": 2.138169417555025,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 27.5,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 28.400000000000002,
+        "hit_rival": false,
+        "closest": 0.3388445698283507
+      }
+    },
+    {
+      "seed": 740,
+      "width": 1.7235681327241053,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 8.525,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": false,
+        "progress": 0.6525,
+        "lap_time": 6.800000000000001,
+        "hit_rival": true,
+        "closest": 0.13279792945189034
+      }
+    },
+    {
+      "seed": 741,
+      "width": 3.7884129677483434,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.3,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 23.650000000000002,
+        "hit_rival": false,
+        "closest": 1.1292513348401398
+      }
+    },
+    {
+      "seed": 742,
+      "width": 1.7827246935499432,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 12.625,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 15.0,
+        "hit_rival": false,
+        "closest": 0.28030067442174694
+      }
+    },
+    {
+      "seed": 743,
+      "width": 1.7673919804791296,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 14.5,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 20.450000000000003,
+        "hit_rival": false,
+        "closest": 0.26132474736515154
+      }
+    },
+    {
+      "seed": 744,
+      "width": 2.2881887293042102,
+      "rivals": 2,
+      "still": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.450000000000001,
+        "hit_rival": false,
+        "closest": null
+      },
+      "moving": {
+        "done": true,
+        "progress": 1.0,
+        "lap_time": 10.825000000000001,
+        "hit_rival": false,
+        "closest": 0.5008115212380863
+      }
+    }
+  ]
+}
