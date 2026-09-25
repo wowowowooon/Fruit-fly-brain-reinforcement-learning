@@ -36,6 +36,8 @@ fly_drive_node → ESP32 + VESC 시리얼 직접
 | `test_bridge.py` | 관측 변환 검증 (PC) |
 | `test_hardware.py` | 시리얼 프로토콜 검증 (PC) |
 | `test_loop.py` | 실차 명령 경로로 대회 코스 주행 (PC) |
+| `speed_ctrl.py` | 목표 속도 -> duty. 모터 이득을 실측값으로 안다 |
+| `OVERTAKE.md` | 추월 참는 층(`--patience`) 의 측정 결과와 판단 |
 
 ## PC 에서 이미 확인한 것
 
@@ -77,6 +79,20 @@ python3 deploy/fly_drive_node.py --speed-scale 0.3
 ```
 
 **CH5 를 자율로 올려야 움직인다.** 내리면 즉시 사람이 가져간다.
+
+### 4-1. 상대차와 같이 달릴 때 (선택)
+
+```bash
+python3 deploy/fly_drive_node.py --patience
+```
+
+앞차를 지나갈 자리가 없으면 속도를 묶어 뒤따른다. 조향은 건드리지 않는다.
+
+**기본은 꺼져 있다.** 좁은 코스에서 상대차와 달릴 때 박는 횟수가 약
+4분의 1 줄지만 랩타임을 10% 쯤 쓴다. **상대차가 없으면 순손해다** —
+벽만 있는 코스에서도 12.5% 느려지고 얻는 것이 없다.
+
+자세한 측정과 판단 근거는 `OVERTAKE.md`.
 
 ### 5. 서보 반응 실측 (재학습 여부 판단)
 
