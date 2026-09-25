@@ -152,6 +152,13 @@ def main():
     parser.add_argument("--rivals", type=int, default=0,
                         help="움직이는 상대 차 수")
     parser.add_argument("--hazard-seed", type=int, default=1)
+    parser.add_argument("--teacher-rivals", action="store_true",
+                        help="상대 차를 우리 교사 레이싱 라인에 태운다")
+    parser.add_argument("--spawn-opposite", action="store_true",
+                        help="상대 차를 우리 차 정반대(반 바퀴)에서 출발")
+    parser.add_argument("--rival-pace", type=float, nargs=2,
+                        default=(0.30, 0.45),
+                        help="상대 차 속도 / 그 자리 한계속도. 두 값 사이에서 뽑는다")
     parser.add_argument("--laps", type=int, default=0,
                         help="몇 바퀴 돌고 멈출지. 0이면 끌 때까지 계속")
     args = parser.parse_args()
@@ -172,6 +179,9 @@ def main():
             env = MapHazardEnv(track, hazard_seed=args.hazard_seed,
                                n_obstacles=args.obstacles,
                                rivals=args.rivals,
+                               rival_pace=tuple(args.rival_pace),
+                               teacher_rivals=args.teacher_rivals,
+                               spawn_opposite=args.spawn_opposite,
                                n_beams=args.beams, motion=args.motion)
             env.start_pose = find_start(track, env)
             # find_start 가 중심선을 뒤집는다. 접선과 장애물을 다시 만들어야

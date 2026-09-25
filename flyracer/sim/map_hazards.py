@@ -15,8 +15,8 @@
 
 import numpy as np
 
-from flyracer.sim.f1tenth_sim import (BODY_RADIUS, CAR_WIDTH, OBSTACLE_SIZE, _blob,
-                         as_segments)
+from flyracer.sim.f1tenth_sim import (BODY_RADIUS, CAR_WIDTH, MAX_SPEED,
+                                     OBSTACLE_SIZE, _blob, as_segments)
 from flyracer.sim.moving_obstacles import PASS_GAP, MovingObstacleEnv
 from flyracer.sim.track_map import MapEnv
 
@@ -37,12 +37,18 @@ class MapHazardEnv(MovingObstacleEnv, MapEnv):
     """
 
     def __init__(self, track, hazard_seed=0, n_obstacles=MAP_OBSTACLES,
-                 obstacle_passage=MAP_PASSAGE, pass_gap=MAP_PASS_GAP, **kwargs):
+                 obstacle_passage=MAP_PASSAGE, pass_gap=MAP_PASS_GAP,
+                 teacher_rivals=False, spawn_opposite=False, **kwargs):
         self.hazard_seed = int(hazard_seed)
         self.n_obstacles = int(n_obstacles)
         self.obstacle_passage = float(obstacle_passage)
         self.pass_gap = float(pass_gap)
+        # 상대 차를 교사 레이싱 라인에 태울지
+        self.teacher_rivals = bool(teacher_rivals)
+        # 상대 차를 우리 차 정반대(반 바퀴 앞)에 놓을지
+        self.spawn_opposite = bool(spawn_opposite)
         self.blobs = []
+        self._line_side = None
         super().__init__(track, **kwargs)
 
     # ---- 맵에서 그 자리의 여유를 직접 읽는다 -----------------------------
@@ -126,12 +132,14 @@ class MapHazardEnv(MovingObstacleEnv, MapEnv):
         tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
         self._tangent = tangent
         self._normal = np.stack([-tangent[:, 1], tangent[:, 0]], axis=1)
-        from flyracer.sim.f1tenth_sim import MAX_SPEED
         from flyracer.sim.moving_obstacles import _corner_side
         from flyracer.drive.racing_teacher import speed_plan
         self._pace_line = speed_plan(self.center, room=None, v_max=MAX_SPEED)
         self._apex = _corner_side(self.center)
         self._rebuild()
+        if self.teacher_rivals:
+            # 중심선이 확정된 뒤에 만들어야 라인이 제자리에 앉는다
+            self.make_teacher_rival()
 
     def _rebuild(self):
         """장애물을 새로 놓고 벽 선분에 얹는다."""
@@ -168,18 +176,28 @@ class MapHazardEnv(MovingObstacleEnv, MapEnv):
         need = (CAR_WIDTH + self.pass_gap) / 2 + BODY_RADIUS
         rng = self.rival_rng or np.random.default_rng([self.hazard_seed, 909])
         ok = np.where(room >= need)[0]
-        ok = ok[(ok > steps * 0.10) & (ok < steps * 0.90)]
+        if not self.spawn_opposite:
+            # 무작위로 놓을 때는 출발선 근처를 비운다. 정반대에 놓을 때는
+            # '정확히 반 바퀴' 가 목적이라 자르지 않는다.
+            ok = ok[(ok > steps * 0.10) & (ok < steps * 0.90)]
         if len(ok) == 0:
             return
 
-        chunks = np.array_split(ok, self.rival_count)
-        for order, chunk in enumerate(chunks):
-            if not len(chunk):
-                continue
-            slot = int(chunk[len(chunk) // 2])
-            here = float(room[slot])
-            # 벽에 안 닿는 선에서 한쪽으로 붙인다
-            side_max = here - CAR_WIDTH / 2
+        if self.spawn_opposite:
+            # 우리 차에서 정확히 반 바퀴 떨어진 자리. 여러 대면 한 바퀴를
+            # 고르게 나눈다(우리 자리는 비워 둔다).
+            here = int(np.argmin(np.linalg.norm(self.center - self.pos,
+                                               axis=1)))
+            want = [(here + int(steps * (k + 1) / (self.rival_count + 1)))
+                    % steps for k in range(self.rival_count)]
+            # 그 자리가 너무 좁으면 통과 가능한 가장 가까운 자리로 민다
+            slots = [int(ok[np.argmin(np.abs(ok - w))]) for w in want]
+        else:
+            slots = [int(c[len(c) // 2])
+                     for c in np.array_split(ok, self.rival_count) if len(c)]
+
+        for order, slot in enumerate(slots):
+            side_max = float(room[slot]) - CAR_WIDTH / 2
             sign = 1.0 if order % 2 else -1.0
             self.rivals.append({
                 "index": float(slot),
@@ -192,7 +210,43 @@ class MapHazardEnv(MovingObstacleEnv, MapEnv):
 
     def _rival_side(self, rival, index):
         """그 자리의 실제 여유 안으로 눌러 넣는다. 안 그러면 벽에 박힌다."""
-        side = super()._rival_side(rival, index)
+        if self.teacher_rivals and self._line_side is not None:
+            side = float(self._line_side[index])
+        else:
+            side = super()._rival_side(rival, index)
         here = float(self._room_at(self.center[index])[0])
         limit = max(0.0, here - CAR_WIDTH / 2)
         return float(np.clip(side, -limit, limit))
+
+    # ---- 교사를 상대 차로 -------------------------------------------------
+    def make_teacher_rival(self):
+        """상대 차를 우리 교사 라인에 태운다.
+
+        기본 상대 차는 중심선을 따라가며 코너에서 안쪽을 조금 파고드는
+        단순한 모델이다. 교사는 코리도 DP + 최소곡률로 뽑은 진짜 레이싱
+        라인을 그 자리 한계속도로 달린다. 그걸 상대로 쓰면 '제대로 달리는
+        차를 어떻게 넘어가나' 를 보게 된다.
+
+        라인을 그대로 쓰지 않고 '중심선에서 옆으로 얼마' 로 바꿔 둔다.
+        상대 차 몸통은 중심선 번호로 그려지므로, 그 번호에 맞는 치우침이
+        있어야 라인 위에 앉는다.
+        """
+        from flyracer.drive.racing_teacher import RacingTeacher, speed_plan
+
+        teacher = RacingTeacher(self.center, self.seg_a, self.seg_b,
+                                self.track_width / 2, v_max=MAX_SPEED)
+        line = teacher.plan.line
+        # 라인의 각 점이 중심선 어느 점에서 얼마나 치우쳐 있나
+        side = np.zeros(len(self.center))
+        for i, point in enumerate(self.center):
+            j = int(np.argmin(np.linalg.norm(line - point, axis=1)))
+            side[i] = float(np.dot(line[j] - point, self._normal[i]))
+        self._line_side = side
+        # 교사 속도표도 중심선 번호에 맞춰 옮긴다
+        pace = speed_plan(line, teacher.plan.room, MAX_SPEED)
+        moved = np.zeros(len(self.center))
+        for i, point in enumerate(self.center):
+            j = int(np.argmin(np.linalg.norm(line - point, axis=1)))
+            moved[i] = pace[j]
+        self._pace_line = moved
+        return teacher
