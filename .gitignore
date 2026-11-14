@@ -27,3 +27,20 @@ logs/
 outputs/
 evaluate/__pycache__/
 *.npz
+
+# Python 기타
+*.egg-info/
+venv/
+env/
+.ipynb_checkpoints/
+
+# 학습 산출물
+runs/
+wandb/
+*.ckpt
+
+# 편집기 / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
