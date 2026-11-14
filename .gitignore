@@ -47,3 +47,6 @@ Thumbs.db
 
 # Claude Code 프로젝트 설정 (개인 도구 설정이라 저장소에서 제외)
 .claude/
+
+# README 그림은 올린다
+!docs/images/*.png

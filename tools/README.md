@@ -10,6 +10,7 @@
 | `tune_tracks.py` | 교사가 제대로 도는지 확인하고 트랙 난이도 조정. 모방학습 전에 먼저 통과시킴 |
 | `verify_fast_mode.py` | 라이다 빔 수를 줄여 학습해도 결과가 같은지 확인 |
 | `bench_vec.py` | 병렬 환경 처리량을 재서 강화학습 설정을 고름 |
+| `make_figures.py` | README 그림(`docs/images/`) 생성. 회로 그림, 학습 곡선, 배선 비교, 대회 코스 궤적, 주행 GIF |
 
 ---
 [← 전체 구성으로](../README.md)
