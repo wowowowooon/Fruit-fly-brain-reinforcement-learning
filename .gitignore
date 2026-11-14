@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# 학습 산출물 (용량이 크면 Git LFS나 Releases 사용 권장)
+runs/
+logs/
+wandb/
+*.ckpt
+
+# 편집기 / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
