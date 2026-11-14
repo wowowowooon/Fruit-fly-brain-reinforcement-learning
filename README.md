@@ -129,7 +129,7 @@ flowchart LR
     <td align="center" width="50%"><img src="docs/images/car.jpg" width="100%" alt="1:10 실차. Jetson Xavier NX와 2D 라이다 탑재"></td>
   </tr>
   <tr>
-    <td align="center"><sub>종이 상자 장애물 사이를 빠져나가 코너를 돌아 나오는 장면 (소리 없음) · <a href="docs/media/real_drive.mp4">고화질 MP4</a></sub></td>
+    <td align="center"><sub>종이 상자 장애물을 피해 지나가는 장면 (소리 없음) · <a href="docs/media/real_drive.mp4">고화질 MP4</a></sub></td>
     <td align="center"><sub>1:10 실차 — Jetson Xavier NX, 2D 라이다, VESC, ESP32</sub></td>
   </tr>
 </table>
