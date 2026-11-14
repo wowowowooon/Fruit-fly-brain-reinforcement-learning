@@ -12,7 +12,10 @@
 📄 [연구 보고서 (PDF)](docs/research_report.pdf)
 
 <p align="center">
-  <img src="docs/images/drive.gif" width="100%" alt="초파리 회로가 2026 대회 코스를 주행하는 시뮬레이션">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/drive_dark.gif">
+    <img src="docs/images/drive_light.gif" width="100%" alt="초파리 회로가 2026 대회 코스를 주행하는 시뮬레이션">
+  </picture>
   <br>
   <sub>학습에 쓰지 않은 2026 대회 코스를 초파리 회로가 지도 없이 라이다(파랑)만 보고 달린다. 주황은 상대 차. 실제 속도로 재생. <a href="#3-실차-주행-2026-10-1">실차 주행 영상 보기 ↓</a></sub>
 </p>
@@ -64,7 +67,10 @@ flowchart LR
     N --> DR
 ```
 
-<p align="center"><img src="docs/images/circuit.png" width="100%" alt="초파리 주행 회로 871개 뉴런과 연결"></p>
+<p align="center"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/circuit_dark.png">
+    <img src="docs/images/circuit_light.png" width="100%" alt="초파리 주행 회로 871개 뉴런과 연결">
+  </picture></p>
 
 - **입력**: 커넥톰 시냅스의 겹눈 육각 좌표로 시각 뉴런 231개를 라이다 시야 구역에 배정 (근접도 LC9 등, 접근 감지 LC4·LPLC2, 광역 운동 LPT/HS)
 - **출력**: 조향 뉴런 10개(DNa01·02·03, DNb06, DNg13) + 구동 뉴런 12개(DNg100, DNp09, DNb08, MDN). 초파리처럼 좌우 활동 차이로 조향
@@ -74,14 +80,24 @@ flowchart LR
 
 ### 1. 초파리 배선 vs 밀집 신경망 — 뉴런 수는 같고 배선만 다르다
 
-<p align="center"><img src="docs/images/wiring_compare.png" width="100%" alt="초파리 배선과 밀집망의 조건별 완주율"></p>
+**조건별 완주율** — 학습한 조건에서는 밀집망, 학습에서 못 본 조건에서는 초파리 배선이 앞섰다
 
-<p align="center"><img src="docs/images/learning_curve.png" width="100%" alt="강화학습 회차별 완주율 곡선"></p>
+<p align="center"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/wiring_compare_dark.png">
+    <img src="docs/images/wiring_compare_light.png" width="100%" alt="초파리 배선과 밀집망의 조건별 완주율">
+  </picture></p>
+
+**강화학습 수렴 속도** — 학습 트랙 완주율, 50회차 이동평균
+
+<p align="center"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/learning_curve_dark.png">
+    <img src="docs/images/learning_curve_light.png" width="100%" alt="강화학습 회차별 완주율 곡선">
+  </picture></p>
 
 <sub>완주율 80% 도달 회차는 50회차 이동평균 기준이다. 이동평균 창을 25회차로 잡으면 169 vs 429회차로, 차이의 크기는 창에 따라 달라진다. 초파리 배선이 먼저 도달한다는 방향은 같다.</sub>
 
 | 측정 | C (초파리 배선) | B (전부 연결) |
-|---|---|---|
+|:---|:---:|:---:|
 | 기본 주행 완주 (45트랙) | 39 | **42** |
 | 움직이는 상대 차 있을 때 완주 | **23** | 17 |
 | 학습 범위 밖 센서 고장 우세 조건 (12개 중) | **9** | 1 |
@@ -93,10 +109,13 @@ flowchart LR
 
 ### 2. 2026 대회 코스 — 학습에 쓰지 않은 맵
 
-<p align="center"><img src="docs/images/race_course.png" width="85%" alt="최종 모델의 대회 코스 주행 궤적: 벽만, 정지 장애물, 상대 차"></p>
+<p align="center"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/race_course_dark.png">
+    <img src="docs/images/race_course_light.png" width="85%" alt="최종 모델의 대회 코스 주행 궤적: 벽만, 정지 장애물, 상대 차">
+  </picture></p>
 
 | 측정 | T안 (최종) | R안 (이전 최고) |
-|---|---|---|
+|:---|:---:|:---:|
 | 대회 코스 (노면 7종 × 섭동 3단계) | **21/21, 평균 9.15초** | 21/21, 9.61초 |
 | 대회 코스 최소 여유 (벽까지) | **+22.8 cm** | +1.3 cm |
 | 일반 45트랙 × 섭동 7단계 | **45.0 ± 0.0** | 42.3 ± 1.2 |
@@ -106,11 +125,11 @@ flowchart LR
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="docs/images/real_drive.gif" width="100%" alt="초파리 회로 최종 모델의 실차 주행"></td>
+    <td align="center" width="50%"><img src="docs/images/real_drive.gif" width="100%" alt="초파리 회로 최종 모델이 실차로 장애물을 피해 가는 장면"></td>
     <td align="center" width="50%"><img src="docs/images/car.jpg" width="100%" alt="1:10 실차. Jetson Xavier NX와 2D 라이다 탑재"></td>
   </tr>
   <tr>
-    <td align="center"><sub>실차 주행 (소리 없음) · <a href="docs/media/real_drive.mp4">고화질 MP4</a></sub></td>
+    <td align="center"><sub>종이 상자 장애물 사이를 빠져나가 코너를 돌아 나오는 장면 (소리 없음) · <a href="docs/media/real_drive.mp4">고화질 MP4</a></sub></td>
     <td align="center"><sub>1:10 실차 — Jetson Xavier NX, 2D 라이다, VESC, ESP32</sub></td>
   </tr>
 </table>
