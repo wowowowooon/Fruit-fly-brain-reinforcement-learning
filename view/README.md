@@ -10,3 +10,6 @@
 ```powershell
 .\.venv\Scripts\python.exe view\viewer.py --model T_fly871_final.pt --motion 6 --map <맵.yaml> --obstacles 6 --rivals 2
 ```
+
+---
+[← 전체 구성으로](../README.md)

@@ -7,3 +7,6 @@
 | `first_neuron.py` | neuPrint 서버 접속과 뉴런 조회 첫 시험 |
 | `sim_check.py` | 시뮬레이터가 제대로 도는지, 벽 따라가기 기본 주행 확인 |
 | `wiring_test.py` | 커넥톰 연결 행렬을 학습 가능한 조향 제어기로 꽂을 수 있는지 검증 |
+
+---
+[← 전체 구성으로](../README.md)

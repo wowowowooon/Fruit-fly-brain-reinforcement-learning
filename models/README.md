@@ -24,3 +24,6 @@
 | `pick_` | `grid_pick.py` | 설정 선정용 넓은 재측정 |
 | `race_` | `grid_race.py` | 대회 코스 반복 측정 |
 | `racerobust_` | `race_robust.py` | 대회 코스 노면 × 섭동 21판 |
+
+---
+[← 전체 구성으로](../README.md)

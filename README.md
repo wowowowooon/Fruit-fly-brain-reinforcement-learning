@@ -101,6 +101,14 @@ IMU                 근접도 18 + 접근율 18        연결 9,992 · 억제성
 
 전체 참고문헌 29편은 [연구 보고서](docs/research_report.pdf)에 있습니다.
 
+## 설치
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate        # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 ## 폴더 구성
 
 | 폴더 | 내용 |
