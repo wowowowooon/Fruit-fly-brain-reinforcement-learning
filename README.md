@@ -101,13 +101,22 @@ IMU                 근접도 18 + 접근율 18        연결 9,992 · 억제성
 
 전체 참고문헌 29편은 [연구 보고서](docs/research_report.pdf)에 있습니다.
 
-## 코드 구조와 실행
+## 폴더 구성
 
-폴더 구성, 각 스크립트가 하는 일, 학습·평가 실행 순서는 [`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md)에 정리되어 있습니다.
+| 폴더 | 내용 |
+|---|---|
+| [`flyracer/`](flyracer/) | 핵심 패키지. 시뮬레이터(`sim`), 초파리 회로·CfC 신경망(`brain`), 레이싱 라인·교사·추월 층(`drive`) |
+| [`train/`](train/) | 학습. 모방학습(DAgger) → 강화학습(PPO) |
+| [`evaluate/`](evaluate/) | 성적 측정과 실험. 완주율, 센서 고장, 제어 지연, 상대 차, 대회 코스, 최종 모델 선정 |
+| [`view/`](view/) | 주행 뷰어와 궤적 그림 |
+| [`deploy/`](deploy/) | 실차 이식. Jetson용 주행 노드, ESP32·VESC 통신, 실차 경로 검증 |
+| [`data/`](data/) | neuPrint에서 받은 회로 데이터. 최종 회로 뉴런 871개, 연결 9,992개 |
+| [`models/`](models/) | 모델별 성적표(JSON). 가중치는 용량 때문에 제외 |
+| [`tools/`](tools/) | 회로 데이터 받기·추리기, 학습 전 점검 도구 |
+| [`scripts/`](scripts/) | 학습·실험 진행 상황 보기, 체크포인트 보관 |
+| [`archive/`](archive/) | 초기 검증용 1회성 스크립트 (기록용) |
+| [`docs/`](docs/) | 연구 보고서 PDF, 코드 안내서 |
 
-- `flyracer/` — 핵심 패키지 (시뮬레이터, 초파리 회로, 주행 알고리즘)
-- `train/` · `evaluate/` · `view/` — 학습, 성적 측정, 시각화 스크립트
-- `deploy/` — 실차(Jetson) 이식 코드
-- `data/` — neuPrint에서 추출한 회로 뉴런·연결 CSV
+폴더마다 README가 있어서 폴더를 열면 파일별 설명이 보입니다. 실행 명령과 파일별 상세 설명은 [`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md)에 있습니다.
 
 학습된 가중치(`*.pt`)와 실험 산출물(`outputs/`, `logs/`)은 용량 때문에 저장소에 포함하지 않았습니다.
