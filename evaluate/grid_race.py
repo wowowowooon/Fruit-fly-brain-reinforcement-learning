@@ -26,8 +26,9 @@ import numpy as np
 from flyracer.sim.f1tenth_sim import BODY_RADIUS, LIDAR_RANGE
 from flyracer.brain.fly_driver import FlyDriver
 from flyracer.paths import model as model_path
+from flyracer.paths import RACE_MAP
 
-MAP_YAML = r"C:\Users\woong\Desktop\ifac_roboracer_maps\ifac_roboracer.yaml"
+MAP_YAML = str(RACE_MAP)
 # 학습에 쓰는 마찰 범위(0.75~1.15)에 고르게 7점.
 GRIPS = (0.75, 0.82, 0.88, 0.95, 1.02, 1.08, 1.15)
 # 노면 말고 다른 무작위(센서 잡음)를 고정하는 시드.

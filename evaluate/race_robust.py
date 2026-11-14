@@ -29,8 +29,9 @@ import numpy as np
 from flyracer.sim.f1tenth_sim import BODY_RADIUS, LIDAR_RANGE
 from flyracer.brain.fly_driver import FlyDriver
 from flyracer.paths import model as model_path
+from flyracer.paths import RACE_MAP
 
-MAP_YAML = r"C:\Users\woong\Desktop\ifac_roboracer_maps\ifac_roboracer.yaml"
+MAP_YAML = str(RACE_MAP)
 GRIPS = (0.75, 0.82, 0.88, 0.95, 1.02, 1.08, 1.15)
 # 0 = 그대로, 1e-6 = 수치 오차 수준, 1e-3 = 실차 명령 분해능
 NUDGES = (0.0, 1e-6, 1e-3)

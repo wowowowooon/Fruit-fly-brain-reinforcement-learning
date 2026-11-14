@@ -28,6 +28,7 @@ import numpy as np
 from flyracer.sim.f1tenth_sim import BODY_RADIUS, F1TenthEnv, LIDAR_RANGE
 from flyracer.brain.fly_driver import FlyDriver
 from flyracer.paths import model as model_path
+from flyracer.paths import RACE_MAP
 
 # 일반 트랙. experiment_robust_completion 과 같은 구간을 써야 R안 숫자와 비교된다.
 EVAL_START = 700
@@ -40,7 +41,7 @@ EPISODE_STEPS = 3000
 # 7점 전부 돌리면 18판 x 7 = 126 세트라 너무 오래 걸린다.
 NUDGES = (0.0, 1e-3)
 
-MAP_YAML = r"C:\Users\woong\Desktop\ifac_roboracer_maps\ifac_roboracer.yaml"
+MAP_YAML = str(RACE_MAP)
 
 
 def drive(driver, seed, beams, nudge, rng, motion, narrow=False):

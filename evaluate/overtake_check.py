@@ -34,8 +34,9 @@ from flyracer.sim.f1tenth_sim import BODY_RADIUS, LIDAR_RANGE, F1TenthEnv
 from flyracer.sim.map_hazards import MapHazardEnv
 from flyracer.sim.map_start import find_start
 from flyracer.sim.track_map import MapTrack
+from flyracer.paths import RACE_MAP
 
-MAP_YAML = r"C:\Users\woong\Desktop\ifac_roboracer_maps\ifac_roboracer.yaml"
+MAP_YAML = str(RACE_MAP)
 MOTION, BEAMS = 6, 541
 STEPS = 6000              # 150초 연속 주행
 GRIPS = (0.75, 0.88, 1.02, 1.15)

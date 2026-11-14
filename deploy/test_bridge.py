@@ -27,8 +27,9 @@ from flyracer.sim.f1tenth_sim import (BODY_RADIUS, LIDAR_FOV, LIDAR_RANGE,
                                       YAW_RATE_MAX, F1TenthEnv)
 from flyracer.sim.map_start import find_start
 from flyracer.sim.track_map import MapEnv, MapTrack
+from flyracer.paths import RACE_MAP
 
-MAP_YAML = r"C:\Users\woong\Desktop\ifac_roboracer_maps\ifac_roboracer.yaml"
+MAP_YAML = str(RACE_MAP)
 MODEL = "T_fly871_final.pt"
 MOTION = 6
 BEAMS = 541

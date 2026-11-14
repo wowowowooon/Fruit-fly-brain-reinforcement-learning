@@ -32,8 +32,9 @@ from flyracer.sim.map_hazards import MAP_OBSTACLES, MapHazardEnv
 from flyracer.paths import OUTPUTS, model as model_path
 from flyracer.sim.map_start import find_start
 from flyracer.sim.track_map import MapTrack
+from flyracer.paths import RACE_MAP
 
-MAP_YAML = r"C:\Users\woong\Desktop\ifac_roboracer_maps\ifac_roboracer.yaml"
+MAP_YAML = str(RACE_MAP)
 SEED = 1234
 
 

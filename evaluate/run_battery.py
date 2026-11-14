@@ -15,6 +15,8 @@ from pathlib import Path
 # 저장소 뿌리를 경로에 넣어 줘야 한다.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from flyracer.paths import RACE_MAP
+
 import argparse
 import subprocess
 import sys
@@ -23,7 +25,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-MAP = r"C:\Users\woong\Desktop\ifac_roboracer_maps\ifac_roboracer.yaml"
+MAP = str(RACE_MAP)
 
 # (이름, 스크립트, 붙일 인자). --dense 는 필요하면 자동으로 붙는다.
 STEPS = [

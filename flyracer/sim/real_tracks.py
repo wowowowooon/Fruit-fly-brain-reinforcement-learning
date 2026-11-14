@@ -26,9 +26,9 @@ import pathlib
 import numpy as np
 
 from flyracer.sim.f1tenth_sim import _resample
-from flyracer.paths import DATA
+from flyracer.paths import DATA, F1TENTH_TRACKS
 
-ROOT = pathlib.Path(r"C:\Users\woong\Desktop\f1tenth_racetracks")
+ROOT = F1TENTH_TRACKS   # 위치는 flyracer/paths.py 에서 정한다
 POINTS = 600            # 중심선을 몇 점으로 다시 찍을지. 트랙이 길어서 넉넉히.
 
 

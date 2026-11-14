@@ -109,6 +109,8 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+평가 스크립트는 저장소 **옆 폴더**에서 대회 맵(`../ifac_roboracer_maps/`)과 F1TENTH 공개 서킷(`../f1tenth_racetracks/`, [GitHub](https://github.com/f1tenth/f1tenth_racetracks))을 찾습니다. 위치를 바꾸려면 환경 변수 `FLYRACER_RACE_MAP`, `FLYRACER_F1TENTH_TRACKS`를 쓰면 됩니다. 자세한 내용은 [코드 안내서](docs/CODE_GUIDE.md)에 있습니다.
+
 ## 폴더 구성
 
 | 폴더 | 내용 |

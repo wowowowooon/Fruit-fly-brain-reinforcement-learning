@@ -7,6 +7,7 @@
   pd.read_csv(DATA / "subcircuit_neurons.csv")
 """
 
+import os
 from pathlib import Path
 
 # 이 파일은 flyracer/ 안에 있다. 저장소 뿌리는 한 칸 위다.
@@ -18,6 +19,15 @@ DATA = ROOT / "data"        # 커넥톰에서 받아온 뉴런/연결 표
 MODELS = ROOT / "models"    # 학습된 가중치 (.pt)
 OUTPUTS = ROOT / "outputs"  # 그림, 렌더 결과 (.png)
 LOGS = ROOT / "logs"        # 학습 로그
+
+# 저장소 밖에 두는 외부 데이터. 기본은 저장소 옆 폴더이고,
+# 다른 곳에 두었으면 환경 변수로 알려 준다.
+#   ../ifac_roboracer_maps/ifac_roboracer.yaml   2026 대회 코스 맵 (시험에만 쓴다)
+#   ../f1tenth_racetracks/                       F1TENTH 공개 서킷 (github.com/f1tenth/f1tenth_racetracks)
+RACE_MAP = Path(os.environ.get(
+    "FLYRACER_RACE_MAP", ROOT.parent / "ifac_roboracer_maps" / "ifac_roboracer.yaml"))
+F1TENTH_TRACKS = Path(os.environ.get(
+    "FLYRACER_F1TENTH_TRACKS", ROOT.parent / "f1tenth_racetracks"))
 
 for folder in (DATA, MODELS, OUTPUTS, LOGS):
     folder.mkdir(exist_ok=True)
